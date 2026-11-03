@@ -122,3 +122,42 @@
 .record-recurring-btn{grid-column:2/-1;justify-self:end;display:flex;align-items:center;gap:6px;border:1px solid #dcebe3;background:#f5fbf7;color:#177d5b;border-radius:7px;padding:7px 10px;font:700 9px 'DM Sans';cursor:pointer}
 .record-recurring-btn:disabled{opacity:.5;cursor:wait}
 @media(max-width:700px){.recurring-summary{gap:6px}.recurring-summary>div{padding:10px}.recurring-summary b{font-size:17px}.recurring-summary span{font-size:8px}.recurring-card{grid-template-columns:34px minmax(0,1fr) auto;gap:8px;padding:11px 9px}.recurring-icon{width:32px;height:32px}.recurring-card>strong{grid-column:3;grid-row:1;font-size:10px}.recurring-actions{grid-column:2/-1;justify-self:end}.record-recurring-btn{grid-column:2/-1}}
+
+
+/* Official bank connection tracker */
+.bank-connections-page{display:grid;gap:16px}
+.bank-security-label{display:inline-flex;align-items:center;gap:6px;border:1px solid #dcebe3;background:#f4faf6;color:#267653;border-radius:20px;padding:7px 10px;font-size:9px;font-weight:700;white-space:nowrap}
+.bank-framework-notice{display:flex;gap:12px;padding:15px;border:1px solid #dcebe3;background:#f7fbf8;border-radius:11px}
+.bank-framework-icon{width:34px;height:34px;flex-shrink:0;display:grid;place-items:center;border-radius:9px;background:#e4f2e9;color:#247653}
+.bank-framework-notice b{font:700 11px Manrope,sans-serif;color:#344456}
+.bank-framework-notice p{font-size:10px;line-height:1.6;color:#748477;margin:5px 0 0}
+.bank-connection-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.bank-provider-card{display:flex;flex-direction:column;min-width:0;border:1px solid #edf0f3;border-radius:11px;padding:14px;background:#fff}
+.bank-provider-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.bank-provider-icon{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;background:#f0f4f2;color:#537064}
+.bank-provider-card h3{font:700 12px Manrope,sans-serif;color:#344456;margin:12px 0 5px}
+.bank-provider-card p{font-size:9px;line-height:1.55;color:#89958f;margin:0 0 14px;flex:1}
+.bank-api-status{display:inline-flex;align-items:center;justify-content:center;border-radius:20px;padding:5px 7px;font-size:8px;font-weight:700;white-space:nowrap}
+.bank-api-status.unverified{background:#f1f3f5;color:#75818c}
+.bank-api-status.payments-only{background:#fff5e9;color:#a56b2e}
+.bank-api-status.business-portal{background:#edf4ff;color:#5578a8}
+.bank-api-status.draft-framework{background:#f3efff;color:#765fa5}
+.bank-api-status.pending{background:#fff5e9;color:#a56b2e}
+.bank-provider-footer{display:flex;align-items:center;justify-content:space-between;gap:7px;padding-top:10px;border-top:1px solid #f0f2f4}
+.bank-provider-footer>span{font-size:8px;color:#99a39e}
+.track-bank-btn,.tracked-btn{display:inline-flex;align-items:center;gap:5px;border:0;border-radius:7px;padding:7px 9px;font:700 9px 'DM Sans';white-space:nowrap}
+.track-bank-btn{background:#eaf5ee;color:#267653;cursor:pointer}
+.track-bank-btn:hover{background:#dcefe3}
+.tracked-btn{background:#f2f4f5;color:#7c8983}
+.track-bank-btn:disabled,.tracked-btn:disabled{opacity:.65;cursor:default}
+.bank-tracker-panel{border:1px solid #edf0f3;border-radius:11px;padding:14px}
+.bank-tracker-panel .section-heading{margin-bottom:10px}
+.bank-tracker-panel .section-heading h3{font:700 12px Manrope,sans-serif;color:#344456;margin:0 0 4px}
+.bank-tracker-panel .section-heading p{font-size:9px;color:#929e97;margin:0}
+.bank-tracker-panel .section-heading>span{font-size:9px;color:#8a968f}
+.bank-request-row{display:flex;align-items:center;gap:10px;padding:11px 0;border-top:1px solid #f0f2f4}
+.bank-request-row>div{min-width:0;flex:1}
+.bank-request-row b{display:block;font-size:10px;color:#455468}
+.bank-request-row>div span{display:block;font-size:8px;color:#9aa4af;margin-top:4px}
+@media(max-width:900px){.bank-connection-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.bank-connection-grid{grid-template-columns:1fr}.bank-provider-card{padding:13px}.bank-framework-notice{padding:12px;align-items:flex-start}.bank-request-row{gap:6px}.bank-request-row .bank-api-status{font-size:7px;padding:5px}}
