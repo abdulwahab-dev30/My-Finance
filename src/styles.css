@@ -232,3 +232,13 @@
 /* Reliable native file picker trigger on mobile */
 .statement-file-input{display:none!important}
 .statement-import-controls .import-file-btn{display:inline-flex;align-items:center;justify-content:center;cursor:pointer;white-space:nowrap;min-width:0}
+
+
+/* Change password form */
+.password-change-form{display:grid;gap:11px;padding:14px;margin:0 0 12px;border:1px solid #e9efeb;border-radius:11px;background:#fbfdfb}
+.password-change-form label{display:grid;gap:6px;font-size:10px;font-weight:700;color:#536458}
+.password-change-form input{width:100%;height:40px;border:1px solid #e2e9e5;border-radius:8px;padding:0 11px;background:#fff;color:#344456;font:12px 'DM Sans',sans-serif;outline:none}
+.password-change-form input:focus{border-color:#269d79;box-shadow:0 0 0 3px #269d7918}
+.password-change-form .form-hint{margin:0}
+.password-change-form .primary-btn{justify-self:start;min-height:38px}
+@media(max-width:700px){.password-change-form{padding:12px}.password-change-form .primary-btn{width:100%;justify-content:center}}
