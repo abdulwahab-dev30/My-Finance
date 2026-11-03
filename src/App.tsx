@@ -80,7 +80,7 @@ function App() {
 
   if (loading) return <div className="auth-loading"><div className="auth-spinner"/><span>Loading your secure workspace...</span></div>
   if (!isSupabaseConfigured) return <Auth configurationMissing />
-  if (!session || recovery) return <Auth recovery={recovery} onRecoveryComplete={() => setRecovery(false)} />
+  if (!session || recovery) return <Auth key={recovery ? "password-recovery" : "sign-in"} recovery={recovery} onRecoveryComplete={() => setRecovery(false)} />
   return <Dashboard onSignOut={signOut} userEmail={session.user.email || ''} />
 }
 
