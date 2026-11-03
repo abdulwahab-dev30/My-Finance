@@ -22,7 +22,7 @@ const addFrequency = (date:string,frequency:RecurringRow['frequency']) => {
   }
   return d.toISOString().slice(0,10)
 }
-const dayDistance = (date:string) => Math.round((Date.parse(date+'T00:00:00Z')-Date.parse(new Date().toISOString().slice(0,10)+'T00:00:00Z'))/86400000)
+const dayDistance = (date:string) => { const today=new Date();today.setHours(0,0,0,0);const due=new Date(date+'T00:00:00');return Math.round((due.getTime()-today.getTime())/86400000) }
 const money = (n:number) => new Intl.NumberFormat('en-PK',{maximumFractionDigits:0}).format(n)
 const dateLabel = (v:string) => new Date(v).toLocaleString('en-PK',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})
 const today = () => new Date().toISOString().slice(0,16)
