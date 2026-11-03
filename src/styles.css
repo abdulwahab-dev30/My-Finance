@@ -227,3 +227,8 @@
 .settings-action-row .secondary-btn{white-space:nowrap;flex-shrink:0}
 .settings-signout{color:#b65b4d;border-color:#f0dedb}
 @media(max-width:700px){.account-summary-strip{align-items:flex-start;flex-direction:column;padding:13px}.connected-accounts-panel{padding:13px}.connected-account-row{gap:8px}.connected-account-row strong{font-size:10px}.settings-section{padding:14px}.settings-action-row{align-items:flex-start;flex-direction:column;gap:9px}.settings-action-row .secondary-btn{height:36px;width:auto;padding:0 12px}.settings-row{gap:9px}}
+
+
+/* Reliable native file picker trigger on mobile */
+.statement-file-input{display:none!important}
+.statement-import-controls .import-file-btn{display:inline-flex;align-items:center;justify-content:center;cursor:pointer;white-space:nowrap;min-width:0}
