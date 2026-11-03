@@ -29,8 +29,8 @@ const money = (n:number) => new Intl.NumberFormat('en-PK',{maximumFractionDigits
 const dateLabel = (v:string) => new Date(v).toLocaleString('en-PK',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})
 const today = () => new Date().toISOString().slice(0,16)
 function parseStatementDate(value:string):Date {
-  const v=value.trim();if(/^\\d{4}-\\d{2}-\\d{2}/.test(v))return new Date(v.length===10?v+'T12:00:00':v)
-  const match=v.match(/^(\\d{1,2})[\\/-](\\d{1,2})[\\/-](\\d{2,4})/)
+  const v=value.trim();if(/^\d{4}-\d{2}-\d{2}/.test(v))return new Date(v.length===10?v+'T12:00:00':v)
+  const match=v.match(/^(\d{1,2})[\\/-](\d{1,2})[\\/-](\d{2,4})/)
   if(match){const day=Number(match[1]),month=Number(match[2])-1,rawYear=Number(match[3]),year=rawYear<100?2000+rawYear:rawYear;return new Date(year,month,day,12)}
   return new Date(v)
 }
@@ -362,9 +362,9 @@ function Dashboard({ onSignOut, userEmail, userId }: { onSignOut:()=>void; userE
       parsed.slice(1).forEach((cells,i)=>{
         const title=cells[titleIdx]||''
         const amountCell=amountIdx>=0?cells[amountIdx]||'':''
-        const debit=debitIdx>=0?Number((cells[debitIdx]||'').replace(/[,\\s]/g,'')):0
-        const credit=creditIdx>=0?Number((cells[creditIdx]||'').replace(/[,\\s]/g,'')):0
-        const amount=amountCell?Math.abs(Number(amountCell.replace(/[,\\s]/g,''))):credit>0?credit:debit
+        const debit=debitIdx>=0?Number((cells[debitIdx]||'').replace(/[,\s]/g,'')):0
+        const credit=creditIdx>=0?Number((cells[creditIdx]||'').replace(/[,\s]/g,'')):0
+        const amount=amountCell?Math.abs(Number(amountCell.replace(/[,\s]/g,''))):credit>0?credit:debit
         const type=typeIdx>=0?(cells[typeIdx]||'').toLowerCase():''
         const direction=type==='income'||type==='incoming'||type==='credit'?'incoming':type==='expense'||type==='outgoing'||type==='debit'?'outgoing':credit>0?'incoming':debit>0?'outgoing':amountCell.startsWith('-')?'outgoing':null
         const dateValue=cells[dateIdx]||''
