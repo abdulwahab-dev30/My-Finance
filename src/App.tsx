@@ -348,12 +348,12 @@ function Dashboard({ onSignOut, userEmail, userId }: { onSignOut:()=>void; userE
       if(parsed.length<2){setImportError('This CSV has no transaction rows.');return}
       const headers=parsed[0].map(h=>h.toLowerCase().replace(/^\uFEFF/,'').trim())
       const idx=(...names:string[])=>headers.findIndex(h=>names.includes(h))
-      const dateIdx=idx('date','occurred_at','datetime')
-      const titleIdx=idx('title','description','transaction','name')
+      const dateIdx=idx('date','transaction date','value date','occurred_at','datetime','transaction datetime')
+      const titleIdx=idx('title','description','transaction','name','narration','particulars','transaction details','details')
       const typeIdx=idx('type','direction','transaction type')
       const amountIdx=idx('amount','value')
-      const debitIdx=idx('debit','withdrawal','withdrawals','dr')
-      const creditIdx=idx('credit','deposit','deposits','cr')
+      const debitIdx=idx('debit','debit amount','withdrawal','withdrawals','withdrawal amount','dr')
+      const creditIdx=idx('credit','credit amount','deposit','deposits','deposit amount','cr')
       const categoryIdx=idx('category')
       const walletIdx=idx('wallet','account')
       if(dateIdx<0||titleIdx<0||(typeIdx<0&&amountIdx<0&&debitIdx<0&&creditIdx<0)){setImportError('Could not identify statement columns. Use Date, Description, Type, Amount, or Debit and Credit columns.');return}
