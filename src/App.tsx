@@ -7,7 +7,7 @@ import { ArrowDownLeft, ArrowUpRight, Bell, CircleHelp, CreditCard, Download, Ey
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis } from 'recharts'
 
 type WalletRow = { id:string; provider:'nayapay'|'easypaisa'|'manual'; display_name:string; connection_status:string }
-type CategoryRow = { id:string; name:string; kind:'income'|'expense' }
+type CategoryRow = { id:string; name:string; kind:'income'|'expense'; user_id:string|null }
 type TxRow = { id:string; title:string; amount:number; direction:'incoming'|'outgoing'; occurred_at:string; description:string|null; wallet_id:string|null; category_id:string|null; wallet_accounts?:{display_name:string}|null; categories?:{name:string}|null }
 type BudgetRow = { id:string; name:string; amount:number; period:'weekly'|'monthly'; starts_on:string; category_id:string|null; categories?:{name:string}|null }
 const money = (n:number) => new Intl.NumberFormat('en-PK',{maximumFractionDigits:0}).format(n)
@@ -54,12 +54,17 @@ function Dashboard({ onSignOut, userEmail, userId }: { onSignOut:()=>void; userE
     setLoadingData(true)
     const [w,c,t,b]=await Promise.all([
       supabase.from('wallet_accounts').select('id,provider,display_name,connection_status').order('created_at',{ascending:true}),
-      supabase.from('categories').select('id,name,kind').or('user_id.is.null,user_id.eq.'+userId).order('name'),
+      supabase.from('categories').select('id,name,kind,user_id').or('user_id.is.null,user_id.eq.'+userId).order('name'),
       supabase.from('transactions').select('id,title,amount,direction,occurred_at,description,wallet_id,category_id,wallet_accounts(display_name),categories(name)').order('occurred_at',{ascending:false}).limit(500),
       supabase.from('budgets').select('id,name,amount,period,starts_on,category_id,categories(name)').order('starts_on',{ascending:false})
     ])
     const err=w.error||c.error||t.error||b.error
     if(err)setNotice(err.message)
+    if(!c.error&&(!c.data||c.data.length===0)){
+      const seeded=await supabase.from('categories').insert(defaultCategories.map(cat=>({...cat,user_id:userId})))
+      if(seeded.error)setNotice(seeded.error.message)
+      else {const refreshed=await supabase.from('categories').select('id,name,kind,user_id').or('user_id.is.null,user_id.eq.'+userId).order('name');if(!refreshed.error)c.data=refreshed.data}
+    }
     setWallets((w.data||[]) as WalletRow[])
     setCategories((c.data||[]) as CategoryRow[])
     setTransactions((t.data||[]) as unknown as TxRow[])
@@ -132,9 +137,11 @@ function Dashboard({ onSignOut, userEmail, userId }: { onSignOut:()=>void; userE
   }
   const budgetSpent=(budget:BudgetRow)=>{
     const now=new Date()
-    const start=new Date(budget.starts_on+'T00:00:00')
-    if(budget.period==='monthly'){start.setFullYear(now.getFullYear(),now.getMonth(),1);start.setHours(0,0,0,0)}
-    else {start.setTime(now.getTime());start.setDate(now.getDate()-((now.getDay()+6)%7));start.setHours(0,0,0,0)}
+    const configuredStart=new Date(budget.starts_on+'T00:00:00')
+    const periodStart=new Date(now)
+    if(budget.period==='monthly'){periodStart.setDate(1);periodStart.setHours(0,0,0,0)}
+    else {periodStart.setDate(now.getDate()-((now.getDay()+6)%7));periodStart.setHours(0,0,0,0)}
+    const start=configuredStart>periodStart?configuredStart:periodStart
     return transactions.filter(t=>t.direction==='outgoing'&&(!budget.category_id||t.category_id===budget.category_id)&&new Date(t.occurred_at)>=start&&new Date(t.occurred_at)<=now).reduce((sum,t)=>sum+Number(t.amount),0)
   }
   const exportCsv=()=>{
@@ -167,7 +174,7 @@ function Dashboard({ onSignOut, userEmail, userId }: { onSignOut:()=>void; userE
           <div className="panel insight-panel"><div className="insight-title"><div className="spark-icon"><Zap size={17}/></div><div><h2>Getting started</h2><p>Your finance workspace</p></div></div><div className="spend-total">{transactions.length} <span>transactions saved</span></div><div className="insight-tip"><ShieldCheck size={15}/><span>Start by adding your wallets, then record income and expenses. You can import statements in a later update.</span></div></div></section></>}
         {active==='Transactions'&&<section className="panel transactions-panel"><div className="section-heading transaction-heading"><div><h2>All transactions</h2><p>Your saved income and expenses.</p></div><button className="text-btn" onClick={()=>setModal('transaction')}><Plus size={15}/> Add new</button></div><div className="transaction-tools"><div className="search-box"><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search transactions"/></div><select value={walletFilter} onChange={e=>setWalletFilter(e.target.value)}><option value="all">All wallets</option>{wallets.map(w=><option key={w.id} value={w.id}>{w.display_name}</option>)}</select><button className="filter-btn" onClick={exportCsv}><Download size={15}/> Export CSV</button></div><TransactionList rows={filtered} onDelete={removeTransaction}/></section>}
         {active==='My wallets'&&<section className="panel transactions-panel"><div className="section-heading"><div><h2>Your wallets</h2><p>Add manual accounts and track their balances.</p></div><button className="primary-btn" onClick={()=>setModal('wallet')}><Plus size={16}/> Add wallet</button></div><div className="wallet-grid">{wallets.map(w=><div className="wallet-card nayapay" key={w.id}><div className="provider-name">{w.display_name}</div><div className="wallet-balance">Rs. {money(walletBalance(w.id))}</div><div className="wallet-card-bottom">{w.provider} · Manual tracking</div></div>)}{!wallets.length&&<div className="empty-state">No wallets added yet.</div>}</div></section>}
-        {active==='Categories'&&<section className="panel transactions-panel"><div className="section-heading"><div><h2>Categories</h2><p>Organize income and expenses with your own categories.</p></div><button className="primary-btn" onClick={()=>{setEditingCategory(null);setCategoryName('');setCategoryKind('expense');setModal('category')}}><Plus size={16}/> Add category</button></div><div className="category-groups">{(['expense','income'] as const).map(kind=><div className="category-group" key={kind}><h3>{kind==='expense'?'Expense categories':'Income categories'}</h3>{categories.filter(cat=>cat.kind===kind).map(cat=><div className="category-row" key={cat.id}><span className={'category-dot '+kind}/><b>{cat.name}</b><span className="category-scope">{(cat as any).user_id===userId?'Custom':'Default'}</span>{(cat as any).user_id===userId&&<><button className="row-action" onClick={()=>{setEditingCategory(cat);setCategoryName(cat.name);setCategoryKind(cat.kind);setModal('category')}} title="Edit"><Pencil size={15}/></button><button className="row-action danger" onClick={()=>removeCategory(cat.id)} title="Delete"><Trash2 size={15}/></button></>}</div>)}{!categories.some(cat=>cat.kind===kind)&&<div className="empty-state">No categories yet.</div>}</div>)}</div></section>}
+        {active==='Categories'&&<section className="panel transactions-panel"><div className="section-heading"><div><h2>Categories</h2><p>Organize income and expenses with your own categories.</p></div><button className="primary-btn" onClick={()=>{setEditingCategory(null);setCategoryName('');setCategoryKind('expense');setModal('category')}}><Plus size={16}/> Add category</button></div><div className="category-groups">{(['expense','income'] as const).map(kind=><div className="category-group" key={kind}><h3>{kind==='expense'?'Expense categories':'Income categories'}</h3>{categories.filter(cat=>cat.kind===kind).map(cat=><div className="category-row" key={cat.id}><span className={'category-dot '+kind}/><b>{cat.name}</b><span className="category-scope">{cat.user_id===userId?'Custom':'Default'}</span>{cat.user_id===userId&&<><button className="row-action" onClick={()=>{setEditingCategory(cat);setCategoryName(cat.name);setCategoryKind(cat.kind);setModal('category')}} title="Edit"><Pencil size={15}/></button><button className="row-action danger" onClick={()=>removeCategory(cat.id)} title="Delete"><Trash2 size={15}/></button></>}</div>)}{!categories.some(cat=>cat.kind===kind)&&<div className="empty-state">No categories yet.</div>}</div>)}</div></section>}
         {active==='Budgets'&&<section className="panel transactions-panel"><div className="section-heading"><div><h2>Your budgets</h2><p>Track category spending against weekly or monthly limits.</p></div><button className="primary-btn" onClick={()=>{setBudgetName('');setBudgetAmount('');setBudgetPeriod('monthly');setBudgetCategory('');setBudgetStart(new Date().toISOString().slice(0,10));setModal('budget')}}><Plus size={16}/> Create budget</button></div><div className="budget-grid">{budgets.map(b=>{const used=budgetSpent(b);const pct=Math.min(100,used/Number(b.amount)*100);const over=used>Number(b.amount);return <div className="budget-card" key={b.id}><div className="budget-card-head"><div><span className="budget-kicker">{b.period.toUpperCase()} BUDGET</span><h3>{b.name}</h3><p>{b.categories?.name||'All expenses'}</p></div><button className="row-action danger" onClick={()=>removeBudget(b.id)} title="Delete budget"><Trash2 size={15}/></button></div><div className="budget-amounts"><b>Rs. {money(used)}</b><span>of Rs. {money(Number(b.amount))}</span></div><div className="budget-progress"><i style={{width:pct+'%',background:over?'#d66b55':'#269d79'}}/></div><div className="budget-foot"><span>{Math.round(pct)}% used</span><span className={over?'budget-over':''}>{over?'Over by':'Remaining'} Rs. {money(Math.abs(Number(b.amount)-used))}</span></div></div>})}{!budgets.length&&<div className="empty-state">No budgets yet. Create a weekly or monthly budget to start tracking spending.</div>}</div></section>}
         {active==='Insights'&&<section className="panel transactions-panel"><h2>Insights</h2><p>Your charts and totals are calculated from your saved transactions.</p><p>Monthly income: Rs. {money(received)} · Monthly expenses: Rs. {money(spent)}</p></section>}
         {loadingData&&<div className="loading-inline">Loading your financial records…</div>}
