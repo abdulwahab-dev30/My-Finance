@@ -144,7 +144,7 @@ create table if not exists public.bank_connection_requests (
   institution_code text not null,
   institution_name text not null,
   access_status text not null default 'provider_access_required'
-    check (access_status in ('provider_access_required','sandbox_access_required','authorization_ready','connected','revoked','unavailable')),
+    check (access_status in ('provider_access_required','sandbox_access_required','authorization_ready','connected','unavailable')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique(user_id, institution_code)
