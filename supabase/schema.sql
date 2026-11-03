@@ -79,13 +79,20 @@ alter table public.budgets enable row level security;
 alter table public.sync_logs enable row level security;
 
 create policy "profile owner access" on public.profiles for all using (auth.uid() = id) with check (auth.uid() = id);
-create policy "wallet owner access" on public.wallet_accounts for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
-create policy "category owner access" on public.categories for all using (user_id is null or auth.uid() = user_id) with check (user_id is null or auth.uid() = user_id);
-create policy "transaction owner access" on public.transactions for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
-create policy "budget owner access" on public.budgets for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
-create policy "sync log owner read" on public.sync_logs for select using (auth.uid() = user_id);
-create policy "sync log owner insert" on public.sync_logs for insert with check (auth.uid() = user_id);
+create policy "wallet owner access" on public.wallet_accounts for all using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+create policy "category public or owner read" on public.categories for select using (user_id is null or (select auth.uid()) = user_id);
+create policy "category owner insert" on public.categories for insert with check ((select auth.uid()) = user_id);
+create policy "category owner update" on public.categories for update using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+create policy "category owner delete" on public.categories for delete using ((select auth.uid()) = user_id);
+create policy "transaction owner access" on public.transactions for all using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+create policy "budget owner access" on public.budgets for all using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+create policy "sync log owner read" on public.sync_logs for select using ((select auth.uid()) = user_id);
+create policy "sync log owner insert" on public.sync_logs for insert with check ((select auth.uid()) = user_id);
 
 create index if not exists transactions_user_date_idx on public.transactions(user_id, occurred_at desc);
 create index if not exists wallets_user_idx on public.wallet_accounts(user_id);
+create index if not exists categories_user_id_idx on public.categories(user_id);
+create index if not exists budgets_category_id_idx on public.budgets(category_id);
+create index if not exists transactions_category_id_idx on public.transactions(category_id);
+create index if not exists transactions_wallet_id_idx on public.transactions(wallet_id);
 create index if not exists budgets_user_idx on public.budgets(user_id, starts_on);
