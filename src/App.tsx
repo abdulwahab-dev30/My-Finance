@@ -11,7 +11,17 @@ type CategoryRow = { id:string; name:string; kind:'income'|'expense'; user_id:st
 type TxRow = { id:string; title:string; amount:number; direction:'incoming'|'outgoing'; occurred_at:string; description:string|null; wallet_id:string|null; category_id:string|null; wallet_accounts?:{display_name:string}|null; categories?:{name:string}|null }
 type BudgetRow = { id:string; name:string; amount:number; period:'weekly'|'monthly'; starts_on:string; category_id:string|null; categories?:{name:string}|null }
 type RecurringRow = { id:string; title:string; amount:number; direction:'incoming'|'outgoing'; frequency:'weekly'|'monthly'|'yearly'; next_due_on:string; end_on:string|null; reminder_days:number; wallet_id:string|null; category_id:string|null; notes:string|null; is_active:boolean; wallet_accounts?:{display_name:string}|null; categories?:{name:string}|null }
-const addFrequency = (date:string,frequency:RecurringRow['frequency']) => { const d=new Date(date+'T12:00:00Z'); if(frequency==='weekly')d.setUTCDate(d.getUTCDate()+7); else if(frequency==='monthly')d.setUTCMonth(d.getUTCMonth()+1); else d.setUTCFullYear(d.getUTCFullYear()+1); return d.toISOString().slice(0,10) }
+const addFrequency = (date:string,frequency:RecurringRow['frequency']) => {
+  const d=new Date(date+'T12:00:00Z')
+  if(frequency==='weekly')d.setUTCDate(d.getUTCDate()+7)
+  else {
+    const day=d.getUTCDate();d.setUTCDate(1)
+    if(frequency==='monthly')d.setUTCMonth(d.getUTCMonth()+1);else d.setUTCFullYear(d.getUTCFullYear()+1)
+    const lastDay=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,0)).getUTCDate()
+    d.setUTCDate(Math.min(day,lastDay))
+  }
+  return d.toISOString().slice(0,10)
+}
 const dayDistance = (date:string) => Math.round((Date.parse(date+'T00:00:00Z')-Date.parse(new Date().toISOString().slice(0,10)+'T00:00:00Z'))/86400000)
 const money = (n:number) => new Intl.NumberFormat('en-PK',{maximumFractionDigits:0}).format(n)
 const dateLabel = (v:string) => new Date(v).toLocaleString('en-PK',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})
@@ -197,7 +207,7 @@ function Dashboard({ onSignOut, userEmail, userId }: { onSignOut:()=>void; userE
     }
     const next=addFrequency(occurrence,item.frequency)
     const stillActive=!item.end_on||next<=item.end_on
-    const {error:updateError}=await supabase.from('recurring_items').update({next_due_on:next,is_active:stillActive}).eq('id',item.id).eq('user_id',userId)
+    const {error:updateError}=await supabase.from('recurring_items').update({next_due_on:stillActive?next:occurrence,is_active:stillActive}).eq('id',item.id).eq('user_id',userId)
     setSaving(false)
     if(updateError){setNotice('Transaction recorded, but schedule update failed: '+updateError.message);await loadData();return}
     setNotice('Transaction recorded for '+item.title+'.');await loadData()
