@@ -8,7 +8,7 @@ import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis } f
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { bankInstitutions, type BankInstitution } from './lib/bankConnections'
 
-type WalletRow = { id:string; provider:'nayapay'|'easypaisa'|'manual'; display_name:string; connection_status:string }
+type WalletRow = { id:string; provider:'nayapay'|'easypaisa'|'manual'; display_name:string; connection_status:string; opening_balance:number }
 type BankRequestRow = { id:string; institution_code:string; institution_name:string; access_status:string; created_at:string }
 type CategoryRow = { id:string; name:string; kind:'income'|'expense'; user_id:string|null }
 type TxRow = { id:string; title:string; amount:number; direction:'incoming'|'outgoing'; occurred_at:string; description:string|null; wallet_id:string|null; category_id:string|null; wallet_accounts?:{display_name:string}|null; categories?:{name:string}|null }
@@ -155,7 +155,7 @@ function Dashboard({ onSignOut, userEmail, userId }: { onSignOut:()=>void; userE
     if(!supabase)return
     setLoadingData(true)
     const [w,c,t,b,r,br]=await Promise.all([
-      supabase.from('wallet_accounts').select('id,provider,display_name,connection_status').order('created_at',{ascending:true}),
+      supabase.from('wallet_accounts').select('id,provider,display_name,connection_status,opening_balance').order('created_at',{ascending:true}),
       supabase.from('categories').select('id,name,kind,user_id').or('user_id.is.null,user_id.eq.'+userId).order('name'),
       supabase.from('transactions').select('id,title,amount,direction,occurred_at,description,wallet_id,category_id,wallet_accounts(display_name),categories(name)').order('occurred_at',{ascending:false}).limit(500),
       supabase.from('budgets').select('id,name,amount,period,starts_on,category_id,categories(name)').order('starts_on',{ascending:false}),
@@ -184,8 +184,8 @@ function Dashboard({ onSignOut, userEmail, userId }: { onSignOut:()=>void; userE
   const monthTx=transactions.filter(t=>new Date(t.occurred_at)>=monthStart)
   const received=monthTx.filter(t=>t.direction==='incoming').reduce((s,t)=>s+Number(t.amount),0)
   const spent=monthTx.filter(t=>t.direction==='outgoing').reduce((s,t)=>s+Number(t.amount),0)
-  const totalBalance=transactions.reduce((s,t)=>s+(t.direction==='incoming'?1:-1)*Number(t.amount),0)
-  const walletBalance=(id:string)=>transactions.filter(t=>t.wallet_id===id).reduce((s,t)=>s+(t.direction==='incoming'?1:-1)*Number(t.amount),0)
+  const totalBalance=wallets.reduce((s,w)=>s+Number(w.opening_balance||0),0)+transactions.reduce((s,t)=>s+(t.direction==='incoming'?1:-1)*Number(t.amount),0)
+  const walletBalance=(id:string)=>Number(wallets.find(w=>w.id===id)?.opening_balance||0)+transactions.filter(t=>t.wallet_id===id).reduce((s,t)=>s+(t.direction==='incoming'?1:-1)*Number(t.amount),0)
   const filtered=useMemo(()=>transactions.filter(t=>(walletFilter==='all'||t.wallet_id===walletFilter)&&((t.title+' '+(t.categories?.name||'')+' '+(t.wallet_accounts?.display_name||'')).toLowerCase().includes(query.toLowerCase()))),[transactions,walletFilter,query])
   const insightStart=useMemo(()=>{
     const d=new Date();d.setHours(0,0,0,0)
