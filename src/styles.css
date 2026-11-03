@@ -190,3 +190,40 @@
   .top-expense-row>div{flex:1}
   .top-expense-row b{white-space:normal;overflow-wrap:anywhere}
 }
+
+
+/* Unified accounts and Settings */
+.account-summary-strip{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 17px;border:1px solid #e8efeb;border-radius:12px;background:#fff}
+.account-summary-strip>div{display:flex;align-items:center;gap:9px;color:#527364;font-size:11px;font-weight:700}
+.connected-accounts-panel{border:1px solid #e9efeb;border-radius:12px;padding:16px;background:#fff}
+.connected-accounts-panel .section-heading{margin-bottom:12px}
+.connected-accounts-panel .section-heading h3{font:700 13px Manrope,sans-serif;color:#344456;margin:0 0 4px}
+.connected-accounts-panel .section-heading p{font-size:10px;color:#89958f;margin:0;line-height:1.5}
+.connected-account-list{display:grid}
+.connected-account-row{display:flex;align-items:center;gap:11px;padding:12px 2px;border-top:1px solid #f0f2f4;min-width:0}
+.connected-account-icon{width:35px;height:35px;border-radius:10px;background:#edf7f1;color:#267653;display:grid;place-items:center;flex-shrink:0}
+.connected-account-row>div:nth-child(2){display:grid;gap:4px;min-width:0;flex:1}
+.connected-account-row b{font-size:11px;color:#344456;overflow-wrap:anywhere}
+.connected-account-row span{font-size:9px;color:#89958f;text-transform:capitalize}
+.connected-account-row strong{font-size:11px;color:#344456;white-space:nowrap}
+.settings-page{display:grid;gap:14px;max-width:900px}
+.settings-profile{display:flex;align-items:center;gap:14px;padding:19px}
+.settings-avatar{width:48px;height:48px;border-radius:15px;background:#e2f2e9;color:#177d5b;display:grid;place-items:center;font:800 19px Manrope,sans-serif;flex-shrink:0}
+.settings-profile h2,.settings-section-head h2{font:700 14px Manrope,sans-serif;color:#263648;margin:0 0 4px}
+.settings-profile p,.settings-section-head p{font-size:10px;color:#758477;margin:0 0 4px;overflow-wrap:anywhere}
+.settings-profile small{font-size:9px;color:#a0aaa4}
+.settings-section{padding:18px}
+.settings-section-head{padding-bottom:12px;border-bottom:1px solid #eef1ef;margin-bottom:2px}
+.settings-row,.settings-action-row{display:flex;align-items:center;justify-content:space-between;gap:15px;padding:14px 0;border-bottom:1px solid #f0f2f4}
+.settings-row:last-child,.settings-action-row:last-child{border-bottom:0}
+.settings-row>div,.settings-action-row>div{display:grid;gap:4px;min-width:0}
+.settings-row b,.settings-action-row b{font-size:11px;color:#344456}
+.settings-row span,.settings-action-row span{font-size:9px;color:#89958f;line-height:1.5}
+.settings-value{font-size:10px!important;font-weight:700;color:#267653!important;white-space:nowrap}
+.settings-toggle{width:42px;height:24px;border:0;border-radius:20px;background:#dfe6e2;padding:3px;display:flex;align-items:center;cursor:pointer;flex-shrink:0}
+.settings-toggle i{width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #0002;transition:transform .18s}
+.settings-toggle.enabled{background:#177d5b}
+.settings-toggle.enabled i{transform:translateX(18px)}
+.settings-action-row .secondary-btn{white-space:nowrap;flex-shrink:0}
+.settings-signout{color:#b65b4d;border-color:#f0dedb}
+@media(max-width:700px){.account-summary-strip{align-items:flex-start;flex-direction:column;padding:13px}.connected-accounts-panel{padding:13px}.connected-account-row{gap:8px}.connected-account-row strong{font-size:10px}.settings-section{padding:14px}.settings-action-row{align-items:flex-start;flex-direction:column;gap:9px}.settings-action-row .secondary-btn{height:36px;width:auto;padding:0 12px}.settings-row{gap:9px}}
