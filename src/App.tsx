@@ -1,4 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { LogOut } from 'lucide-react'
+import Auth from './Auth'
+import { supabase, isSupabaseConfigured } from './lib/supabase'
+import type { Session } from '@supabase/supabase-js'
 import { ArrowDownLeft, ArrowUpRight, Bell, ChevronDown, CircleHelp, CreditCard, Download, Eye, EyeOff, Filter, Home, Landmark, Menu, MoreHorizontal, Plus, Search, Settings, ShieldCheck, Sparkles, Target, TrendingDown, TrendingUp, Wallet, X, Zap } from 'lucide-react'
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis } from 'recharts'
 
@@ -12,7 +16,7 @@ const transactions: Tx[] = [
 ]
 const chartData = [{day:'Mon',in:12,out:7},{day:'Tue',in:18,out:10},{day:'Wed',in:11,out:8},{day:'Thu',in:24,out:13},{day:'Fri',in:17,out:11},{day:'Sat',in:29,out:16},{day:'Sun',in:22,out:9}]
 const money = (n:number) => new Intl.NumberFormat('en-PK',{maximumFractionDigits:0}).format(n)
-function App() {
+function Dashboard({ onSignOut, userEmail }: { onSignOut: () => void; userEmail: string }) {
   const [active,setActive] = useState('Overview')
   const [query,setQuery] = useState('')
   const [walletFilter,setWalletFilter] = useState('All wallets')
@@ -27,7 +31,7 @@ function App() {
       <div className="brand"><div className="brand-mark"><Wallet size={21}/></div><div><b>my finance</b><span>PERSONAL MONEY</span></div><button className="mobile-close icon-btn" onClick={()=>setMobileNav(false)}><X size={18}/></button></div>
       <div className="workspace-label">WORKSPACE</div>
       <nav>{nav.map(item=><button key={item.label} className={active===item.label?'nav-item active':'nav-item'} onClick={()=>{comingSoon(item.label);setMobileNav(false)}}><item.icon size={18}/><span>{item.label}</span>{item.label==='Transactions'&&<small>5</small>}</button>)}</nav>
-      <div className="sidebar-bottom"><div className="help-card"><div className="help-icon"><CircleHelp size={18}/></div><b>Need a hand?</b><p>Your money overview, all in one calm place.</p><button onClick={()=>setNotice('Help centre will be available soon.')}>Visit help centre <span>↗</span></button></div><button className="nav-item" onClick={()=>setNotice('Settings are coming soon.')}><Settings size={18}/>Settings</button><div className="profile"><div className="avatar">W</div><div><b>My account</b><span>Personal workspace</span></div><MoreHorizontal size={19}/></div></div>
+      <div className="sidebar-bottom"><div className="help-card"><div className="help-icon"><CircleHelp size={18}/></div><b>Need a hand?</b><p>Your money overview, all in one calm place.</p><button onClick={()=>setNotice('Help centre will be available soon.')}>Visit help centre <span>↗</span></button></div><button className="nav-item" onClick={()=>setNotice('Settings are coming soon.')}><Settings size={18}/>Settings</button><div className="profile"><div className="avatar">{(userEmail[0] || "U").toUpperCase()}</div><div className="profile-copy"><b>{userEmail || "My account"}</b><span>Personal workspace</span></div><button className="signout-btn" onClick={onSignOut} title="Sign out" aria-label="Sign out"><LogOut size={17}/></button></div></div>
     </aside>
     {mobileNav&&<button className="scrim" onClick={()=>setMobileNav(false)} aria-label="Close navigation"/>}
     <main className="main-area">
@@ -52,4 +56,32 @@ function App() {
     </main>
   </div>
 }
+function App() {
+  const [session, setSession] = useState<Session | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [recovery, setRecovery] = useState(false)
+
+  useEffect(() => {
+    if (!supabase) { setLoading(false); return }
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      setSession(nextSession)
+      if (event === 'PASSWORD_RECOVERY') setRecovery(true)
+      if (event === 'SIGNED_OUT') setRecovery(false)
+      setLoading(false)
+    })
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session)
+      setLoading(false)
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+
+  const signOut = async () => { if (supabase) await supabase.auth.signOut() }
+
+  if (loading) return <div className="auth-loading"><div className="auth-spinner"/><span>Loading your secure workspace...</span></div>
+  if (!isSupabaseConfigured) return <Auth configurationMissing />
+  if (!session || recovery) return <Auth recovery={recovery} onRecoveryComplete={() => setRecovery(false)} />
+  return <Dashboard onSignOut={signOut} userEmail={session.user.email || ''} />
+}
+
 export default App
