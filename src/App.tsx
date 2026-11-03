@@ -30,6 +30,7 @@ const dateLabel = (v:string) => new Date(v).toLocaleString('en-PK',{month:'short
 const today = () => new Date().toISOString().slice(0,16)
 
 type CsvImportRow = { title:string; amount:number; direction:'incoming'|'outgoing'; occurred_at:string; category_id:string|null; wallet_id:string|null; categoryLabel:string; walletLabel:string; line:number }
+type StatementRow = { date:string; title:string; type:'incoming'|'outgoing'; amount:number }
 function parseCsvText(text:string): string[][] {
   const rows:string[][]=[];let row:string[]=[];let cell='';let quoted=false
   for(let i=0;i<text.length;i++){
@@ -45,6 +46,40 @@ function parseCsvText(text:string): string[][] {
     } else cell+=ch
   }
   row.push(cell.trim());if(row.some(v=>v!==''))rows.push(row)
+  return rows
+}
+async function extractPdfStatementRows(file:File):Promise<StatementRow[]> {
+  const pdfjs = await import('pdfjs-dist')
+  pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString()
+  const pdf = await pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise
+  const lines:string[]=[]
+  for(let pageNo=1;pageNo<=pdf.numPages;pageNo++){
+    const page=await pdf.getPage(pageNo);const content=await page.getTextContent();const grouped=new Map<number,string[]>()
+    for(const item of content.items as any[]){if(!('str' in item)||!item.str.trim())continue;const y=Math.round(item.transform?.[5]||0);const parts=grouped.get(y)||[];parts.push(item.str.trim());grouped.set(y,parts)}
+    for(const [,parts] of [...grouped.entries()].sort((a,b)=>b[0]-a[0]))lines.push(parts.join(' '))
+  }
+  const datePattern=/^(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2})/
+  const amountPattern=/-?\d[\d,]*(?:\.\d{1,2})?/g
+  const rows:StatementRow[]=[]
+  const header=lines.find(line=>/debit/i.test(line)&&/credit/i.test(line))||''
+  for(const line of lines){
+    const dateMatch=line.match(datePattern);if(!dateMatch)continue
+    const rawDate=dateMatch[1];let date:Date
+    if(/^\d{4}-/.test(rawDate))date=new Date(rawDate+'T12:00:00')
+    else {const [a,b,c]=rawDate.split(/[/-]/).map(Number);const year=c<100?2000+c:c;date=new Date(year,a>12?b-1:a-1,a>12?a:b,12)}
+    if(Number.isNaN(date.getTime()))continue
+    const tail=line.slice(dateMatch[0].length).trim();const values=(tail.match(amountPattern)||[]).map(v=>Math.abs(Number(v.replace(/,/g,'')))).filter(v=>Number.isFinite(v)&&v>0)
+    if(!values.length)continue
+    const marker=tail.match(/\b(CR|CREDIT|DR|DEBIT)\b/i)?.[1]?.toUpperCase()
+    let amount=0;let direction:'incoming'|'outgoing'|null=null
+    if(marker){direction=marker==='CR'||marker==='CREDIT'?'incoming':'outgoing';amount=values[0]}
+    else if(header&&values.length>=3){const debit=values[values.length-3];const credit=values[values.length-2];if(credit>0){direction='incoming';amount=credit}else if(debit>0){direction='outgoing';amount=debit}}
+    else if(/-\s*\d/.test(tail)){direction='outgoing';amount=values[0]}
+    if(!direction||!amount)continue
+    const title=tail.replace(amountPattern,' ').replace(/\b(CR|CREDIT|DR|DEBIT)\b/ig,' ').replace(/\s+/g,' ').trim()
+    if(!title)continue
+    rows.push({date:date.toISOString(),title:title.slice(0,180),type:direction,amount})
+  }
   return rows
 }
 const defaultCategories = [
@@ -88,6 +123,8 @@ function Dashboard({ onSignOut, userEmail, userId }: { onSignOut:()=>void; userE
   const [importRows,setImportRows]=useState<CsvImportRow[]>([])
   const [importInvalid,setImportInvalid]=useState(0)
   const [importFileName,setImportFileName]=useState('')
+  const [importInstitution,setImportInstitution]=useState('')
+  const [importWalletId,setImportWalletId]=useState('')
   const [importError,setImportError]=useState('')
   const [insightRange,setInsightRange]=useState<'7d'|'30d'|'month'|'90d'|'all'>('30d')
   const [editingRecurring,setEditingRecurring]=useState<RecurringRow|null>(null)
@@ -293,9 +330,15 @@ function Dashboard({ onSignOut, userEmail, userId }: { onSignOut:()=>void; userE
   const handleCsvFile=async(file?:File)=>{
     setImportRows([]);setImportInvalid(0);setImportError('');setImportFileName(file?.name||'')
     if(!file)return
-    if(!file.name.toLowerCase().endsWith('.csv')){setImportError('Please choose a .csv file.');return}
+    if(!importInstitution){setImportError('Please select your bank or wallet before choosing a statement.');return}
     try{
-      const parsed=parseCsvText(await file.text())
+      let parsed:string[][]
+      if(file.name.toLowerCase().endsWith('.csv')) parsed=parseCsvText(await file.text())
+      else if(file.name.toLowerCase().endsWith('.pdf')){
+        const extracted=await extractPdfStatementRows(file)
+        parsed=[['Date','Title','Type','Amount'],...extracted.map(r=>[r.date,r.title,r.type,String(r.amount)])]
+        if(extracted.length===0){setImportError('No readable transaction rows were detected. This may be a scanned PDF or an unsupported statement layout. Try a text-based PDF or CSV export.');return}
+      } else {setImportError('Please choose a CSV or PDF statement.');return}
       if(parsed.length<2){setImportError('This CSV has no transaction rows.');return}
       const headers=parsed[0].map(h=>h.toLowerCase().replace(/^\uFEFF/,'').trim())
       const idx=(...names:string[])=>headers.findIndex(h=>names.includes(h))
@@ -303,9 +346,11 @@ function Dashboard({ onSignOut, userEmail, userId }: { onSignOut:()=>void; userE
       const titleIdx=idx('title','description','transaction','name')
       const typeIdx=idx('type','direction','transaction type')
       const amountIdx=idx('amount','value')
+      const debitIdx=idx('debit','withdrawal','withdrawals','dr')
+      const creditIdx=idx('credit','deposit','deposits','cr')
       const categoryIdx=idx('category')
       const walletIdx=idx('wallet','account')
-      if([dateIdx,titleIdx,typeIdx,amountIdx].some(i=>i<0)){setImportError('Required columns: Date, Title, Type, Amount. Optional: Category, Wallet.');return}
+      if(dateIdx<0||titleIdx<0||(typeIdx<0&&amountIdx<0&&debitIdx<0&&creditIdx<0)){setImportError('Could not identify statement columns. Use Date, Description, Type, Amount, or Debit and Credit columns.');return}
       const seen=new Set<string>()
       const valid:CsvImportRow[]=[];let invalid=0
       parsed.slice(1).forEach((cells,i)=>{
@@ -319,7 +364,7 @@ function Dashboard({ onSignOut, userEmail, userId }: { onSignOut:()=>void; userE
         const categoryLabel=categoryIdx>=0?(cells[categoryIdx]||''):''
         const walletLabel=walletIdx>=0?(cells[walletIdx]||''):''
         const category=categories.find(c=>c.kind===(direction==='incoming'?'income':'expense')&&c.name.toLowerCase()===categoryLabel.toLowerCase())
-        const wallet=wallets.find(w=>w.display_name.toLowerCase()===walletLabel.toLowerCase())
+        const wallet=wallets.find(w=>w.display_name.toLowerCase()===walletLabel.toLowerCase())||wallets.find(w=>w.id===importWalletId)
         const fingerprint=[title.trim().toLowerCase(),amount,direction,date.toISOString()].join('|')
         if(seen.has(fingerprint)){invalid++;return}
         seen.add(fingerprint)
@@ -337,12 +382,12 @@ function Dashboard({ onSignOut, userEmail, userId }: { onSignOut:()=>void; userE
     const skipped=importRows.length-unique.length
     let inserted=0
     for(let i=0;i<unique.length;i+=250){
-      const batch=unique.slice(i,i+250).map(r=>({user_id:userId,title:r.title,amount:r.amount,direction:r.direction,occurred_at:r.occurred_at,category_id:r.category_id,wallet_id:r.wallet_id,description:r.categoryLabel&&!r.category_id?'Imported category: '+r.categoryLabel:r.walletLabel&&!r.wallet_id?'Imported wallet: '+r.walletLabel:null,source:'statement_import',currency:'PKR'}))
+      const batch=unique.slice(i,i+250).map(r=>({user_id:userId,title:r.title,amount:r.amount,direction:r.direction,occurred_at:r.occurred_at,category_id:r.category_id,wallet_id:r.wallet_id,description:[`Imported from ${bankInstitutions.find(b=>b.code===importInstitution)?.name||importInstitution}`,r.categoryLabel&&!r.category_id?'Imported category: '+r.categoryLabel:'',r.walletLabel&&!r.wallet_id?'Imported wallet: '+r.walletLabel:''].filter(Boolean).join(' · '),source:'statement_import',currency:'PKR'}))
       const {error}=await supabase.from('transactions').insert(batch)
       if(error){setImportError('Import stopped after '+inserted+' rows: '+error.message);setSaving(false);await loadData();return}
       inserted+=batch.length
     }
-    setSaving(false);setImportRows([]);setImportFileName('');setImportInvalid(0);setNotice(inserted+' transactions imported'+(skipped?' · '+skipped+' duplicates skipped':'')+(importInvalid?' · '+importInvalid+' invalid rows skipped':'' )+'.');await loadData()
+    setSaving(false);setImportRows([]);setImportFileName('');setImportInvalid(0);setImportInstitution('');setImportWalletId('');setNotice(inserted+' transactions imported'+(skipped?' · '+skipped+' duplicates skipped':'')+(importInvalid?' · '+importInvalid+' invalid rows skipped':'' )+'.');await loadData()
   }
   const downloadCsvTemplate=()=>{
     const csv='Date,Title,Type,Category,Wallet,Amount\n2026-11-04T10:30:00,Grocery shopping,expense,Food,My NayaPay,1500\n2026-11-04T12:00:00,Salary,income,Salary,My NayaPay,50000'
@@ -375,13 +420,13 @@ function Dashboard({ onSignOut, userEmail, userId }: { onSignOut:()=>void; userE
         <section className="wallet-section"><div className="section-heading"><div><h2>Your wallets</h2><p>Balances calculated from transactions you record.</p></div><button className="text-btn" onClick={()=>go('My wallets')}>View all <span>→</span></button></div><div className="wallet-grid">{wallets.length?wallets.map(w=><div className={'wallet-card '+(w.provider==='easypaisa'?'easypaisa':'nayapay')} key={w.id}><div className="wallet-card-top"><div className={'provider-logo '+(w.provider==='easypaisa'?'easy':'naya')}>{w.provider==='easypaisa'?'e':w.provider==='nayapay'?'n':'₨'}</div><span className="wallet-type">{w.provider.toUpperCase()}</span><MoreHorizontal size={19}/></div><div className="provider-name">{w.display_name}</div><div className="wallet-balance">{showBalance?'Rs. '+money(walletBalance(w.id)):'••••••'}</div><div className="wallet-card-bottom"><span className="pending-dot"/> Manual tracking <span className="wallet-link">{w.connection_status}</span></div></div>):<div className="empty-state">No wallets yet. Add NayaPay, Easypaisa or a cash account to get started.</div>}</div><p className="demo-note"><ShieldCheck size={14}/> Balances are based on transactions entered in My Finance; no live wallet connection is active.</p></section>
         <section className="lower-grid"><div className="panel activity-panel"><div className="section-heading"><div><h2>Money activity</h2><p>Incoming and outgoing · last 7 days.</p></div></div><div className="chart-legend"><span><i className="legend-in"/> Received</span><span><i className="legend-out"/> Spent</span></div><div className="chart-wrap"><ResponsiveContainer width="100%" height="100%"><AreaChart data={chartData} margin={{top:10,right:5,left:-24,bottom:0}}><defs><linearGradient id="received" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#269d79" stopOpacity={.2}/><stop offset="100%" stopColor="#269d79" stopOpacity={0}/></linearGradient><linearGradient id="spent" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#e6a45c" stopOpacity={.18}/><stop offset="100%" stopColor="#e6a45c" stopOpacity={0}/></linearGradient></defs><CartesianGrid stroke="#edf0f3" vertical={false}/><XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fill:'#9aa3af',fontSize:11}} dy={9}/><Tooltip formatter={(v:any)=>['Rs. '+money(Number(v)),'']} contentStyle={{borderRadius:12,border:'1px solid #edf0f3',fontSize:12}}/><Area type="monotone" dataKey="in" stroke="#269d79" strokeWidth={2.5} fill="url(#received)"/><Area type="monotone" dataKey="out" stroke="#e6a45c" strokeWidth={2.5} fill="url(#spent)"/></AreaChart></ResponsiveContainer></div></div>
           <div className="panel insight-panel"><div className="insight-title"><div className="spark-icon"><Zap size={17}/></div><div><h2>Getting started</h2><p>Your finance workspace</p></div></div><div className="spend-total">{transactions.length} <span>transactions saved</span></div><div className="insight-tip"><ShieldCheck size={15}/><span>Start by adding your wallets, then record income and expenses. You can import statements in a later update.</span></div></div></section></>}
-        {active==='Transactions'&&<section className="panel transactions-panel"><div className="section-heading transaction-heading"><div><h2>All transactions</h2><p>Your saved income and expenses.</p></div><button className="text-btn" onClick={()=>setModal('transaction')}><Plus size={15}/> Add new</button></div><div className="transaction-tools"><div className="search-box"><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search transactions"/></div><select value={walletFilter} onChange={e=>setWalletFilter(e.target.value)}><option value="all">All wallets</option>{wallets.map(w=><option key={w.id} value={w.id}>{w.display_name}</option>)}</select><label className="filter-btn import-file-btn"><Upload size={15}/> Import CSV<input type="file" accept=".csv,text/csv" onChange={e=>{void handleCsvFile(e.target.files?.[0]);e.currentTarget.value=''}}/></label><button className="filter-btn" onClick={exportCsv}><Download size={15}/> Export CSV</button></div>{importError&&<div className="import-error">{importError}</div>}{importRows.length>0&&<div className="csv-preview"><div className="csv-preview-head"><div><b>{importFileName||'CSV preview'}</b><span>{importRows.length} valid rows · {importInvalid} invalid rows will be skipped</span></div><div><button className="text-btn" onClick={downloadCsvTemplate}>Download template</button><button className="row-action" onClick={()=>{setImportRows([]);setImportFileName('');setImportError('')}} title="Cancel import"><X size={16}/></button></div></div><div className="csv-preview-table"><div className="csv-preview-row csv-preview-header"><span>Date</span><span>Description</span><span>Type</span><span>Amount</span></div>{importRows.slice(0,5).map(r=><div className="csv-preview-row" key={r.line}><span>{new Date(r.occurred_at).toLocaleDateString('en-PK')}</span><span>{r.title}</span><span>{r.direction==='incoming'?'Income':'Expense'}</span><span>Rs. {money(r.amount)}</span></div>)}</div>{importRows.length>5&&<p className="form-hint">Showing first 5 of {importRows.length} rows.</p>}<div className="csv-preview-actions"><button className="secondary-btn" onClick={()=>{setImportRows([]);setImportFileName('')}}>Cancel</button><button className="primary-btn" disabled={saving} onClick={()=>void confirmCsvImport()}>{saving?'Importing…':'Import '+importRows.length+' transactions'}</button></div></div>}<TransactionList rows={filtered} onDelete={removeTransaction}/></section>}
+        {active==='Transactions'&&<section className="panel transactions-panel"><div className="section-heading transaction-heading"><div><h2>All transactions</h2><p>Your saved income and expenses.</p></div><button className="text-btn" onClick={()=>setModal('transaction')}><Plus size={15}/> Add new</button></div><div className="transaction-tools"><div className="search-box"><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search transactions"/></div><select value={walletFilter} onChange={e=>setWalletFilter(e.target.value)}><option value="all">All wallets</option>{wallets.map(w=><option key={w.id} value={w.id}>{w.display_name}</option>)}</select><div className="statement-import-controls"><select aria-label="Select bank or wallet first" value={importInstitution} onChange={e=>{setImportInstitution(e.target.value);setImportRows([]);setImportError('')}}><option value="">1. Select bank / wallet</option>{bankInstitutions.filter(b=>b.code!=='raast-open-banking').map(b=><option key={b.code} value={b.code}>{b.name}</option>)}<option value="cash-other">Cash / Other</option></select><select aria-label="Link imported transactions to wallet" value={importWalletId} onChange={e=>setImportWalletId(e.target.value)}><option value="">No wallet link</option>{wallets.map(w=><option key={w.id} value={w.id}>{w.display_name}</option>)}</select><label className="filter-btn import-file-btn"><Upload size={15}/> Import PDF / CSV<input type="file" accept=".csv,text/csv,.pdf,application/pdf" disabled={!importInstitution} onChange={e=>{void handleCsvFile(e.target.files?.[0]);e.currentTarget.value=''}}/></label></div><button className="filter-btn" onClick={exportCsv}><Download size={15}/> Export CSV</button></div>{importError&&<div className="import-error">{importError}</div>}{importRows.length>0&&<div className="csv-preview"><div className="csv-preview-head"><div><b>{importFileName||'CSV preview'}</b><span>{importRows.length} valid rows · {importInvalid} invalid rows will be skipped</span></div><div><button className="text-btn" onClick={downloadCsvTemplate}>Download template</button><button className="row-action" onClick={()=>{setImportRows([]);setImportFileName('');setImportError('')}} title="Cancel import"><X size={16}/></button></div></div><div className="csv-preview-table"><div className="csv-preview-row csv-preview-header"><span>Date</span><span>Description</span><span>Type</span><span>Amount</span></div>{importRows.slice(0,5).map(r=><div className="csv-preview-row" key={r.line}><span>{new Date(r.occurred_at).toLocaleDateString('en-PK')}</span><span>{r.title}</span><span>{r.direction==='incoming'?'Income':'Expense'}</span><span>Rs. {money(r.amount)}</span></div>)}</div>{importRows.length>5&&<p className="form-hint">Showing first 5 of {importRows.length} rows. Source: {bankInstitutions.find(b=>b.code===importInstitution)?.name||'Cash / Other'}.</p>}<div className="csv-preview-actions"><button className="secondary-btn" onClick={()=>{setImportRows([]);setImportFileName('')}}>Cancel</button><button className="primary-btn" disabled={saving} onClick={()=>void confirmCsvImport()}>{saving?'Importing…':'Import '+importRows.length+' transactions'}</button></div></div>}<TransactionList rows={filtered} onDelete={removeTransaction}/></section>}
         {active==='My wallets'&&<section className="panel transactions-panel"><div className="section-heading"><div><h2>Your wallets</h2><p>Add manual accounts and track their balances.</p></div><button className="primary-btn" onClick={()=>setModal('wallet')}><Plus size={16}/> Add wallet</button></div><div className="wallet-grid">{wallets.map(w=><div className="wallet-card nayapay" key={w.id}><div className="provider-name">{w.display_name}</div><div className="wallet-balance">Rs. {money(walletBalance(w.id))}</div><div className="wallet-card-bottom">{w.provider} · Manual tracking</div></div>)}{!wallets.length&&<div className="empty-state">No wallets added yet.</div>}</div></section>}
         {active==='Bank connections'&&<section className="panel transactions-panel bank-connections-page">
-          <div className="section-heading"><div><h2>Official bank connections</h2><p>Track providers while official customer-consent APIs become available.</p></div><span className="bank-security-label"><LockKeyhole size={13}/> No passwords or PINs</span></div>
+          <div className="section-heading"><div><h2>Bank connections</h2><p>Automatic bank and wallet connections are not available yet.</p></div><span className="bank-security-label"><LockKeyhole size={13}/> Coming soon</span></div>
           <div className="bank-framework-notice"><div className="bank-framework-icon"><ShieldCheck size={19}/></div><div><b>Pakistan Open Banking is moving toward a regulated model</b><p>SBP published draft Open Banking Regulations in October 2026. This is still a consultation draft—not a live universal connection service. My Finance will only activate providers after approved API access and security review.</p></div></div>
-          <div className="bank-connection-grid">{bankInstitutions.map(bank=>{const tracked=bankRequests.some(r=>r.institution_code===bank.code);return <article className="bank-provider-card" key={bank.code}><div className="bank-provider-top"><div className="bank-provider-icon"><Building2 size={19}/></div><span className={'bank-api-status '+bank.readiness}>{bank.readinessLabel}</span></div><h3>{bank.name}</h3><p>{bank.note}</p><div className="bank-provider-footer"><span>{bank.categoryLabel}</span><button disabled={saving||tracked} className={tracked?'tracked-btn':'track-bank-btn'} onClick={()=>void addBankToTracker(bank)}>{tracked?<><ShieldCheck size={13}/> Tracked</>:<>Track access <Link2 size={13}/></>}</button></div></article>})}</div>
-          <div className="bank-tracker-panel"><div className="section-heading"><div><h3>Your provider access tracker</h3><p>These are reminders for API onboarding—not connected bank accounts.</p></div><span>{bankRequests.length} tracked</span></div>{bankRequests.length?bankRequests.map(r=><div className="bank-request-row" key={r.id}><div><b>{r.institution_name}</b><span>Official API access not yet confirmed</span></div><span className="bank-api-status pending">Awaiting provider access</span><button className="row-action danger" title="Remove" onClick={()=>void removeBankFromTracker(r.id)}><X size={15}/></button></div>):<div className="empty-state">Choose banks above to track which official integrations should be prioritised.</div>}</div>
+          <div className="bank-connection-grid">{bankInstitutions.map(bank=>{const tracked=bankRequests.some(r=>r.institution_code===bank.code);return <article className="bank-provider-card" key={bank.code}><div className="bank-provider-top"><div className="bank-provider-icon"><Building2 size={19}/></div><span className={'bank-api-status '+bank.readiness}>{bank.readinessLabel}</span></div><h3>{bank.name}</h3><p>{bank.note}</p><div className="bank-provider-footer"><span>{bank.categoryLabel}</span><span className="bank-coming-soon">Coming soon</span></div></article>})}</div>
+          <div className="bank-framework-notice"><div className="bank-framework-icon"><ShieldCheck size={19}/></div><div><b>In the meantime, import a bank statement</b><p>You can upload a supported CSV or text-based PDF statement from the Transactions page. My Finance will preview the extracted entries before saving them.</p></div></div>
           <p className="insights-footnote"><LockKeyhole size={14}/> No internet-banking credentials, OTPs, access tokens or account numbers are collected by this tracker. No live sync is active.</p>
         </section>}
         {active==='Categories'&&<section className="panel transactions-panel"><div className="section-heading"><div><h2>Categories</h2><p>Organize income and expenses with your own categories.</p></div><button className="primary-btn" onClick={()=>{setEditingCategory(null);setCategoryName('');setCategoryKind('expense');setModal('category')}}><Plus size={16}/> Add category</button></div><div className="category-groups">{(['expense','income'] as const).map(kind=><div className="category-group" key={kind}><h3>{kind==='expense'?'Expense categories':'Income categories'}</h3>{categories.filter(cat=>cat.kind===kind).map(cat=><div className="category-row" key={cat.id}><span className={'category-dot '+kind}/><b>{cat.name}</b><span className="category-scope">{cat.user_id===userId?'Custom':'Default'}</span>{cat.user_id===userId&&<><button className="row-action" onClick={()=>{setEditingCategory(cat);setCategoryName(cat.name);setCategoryKind(cat.kind);setModal('category')}} title="Edit"><Pencil size={15}/></button><button className="row-action danger" onClick={()=>removeCategory(cat.id)} title="Delete"><Trash2 size={15}/></button></>}</div>)}{!categories.some(cat=>cat.kind===kind)&&<div className="empty-state">No categories yet.</div>}</div>)}</div></section>}
