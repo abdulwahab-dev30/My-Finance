@@ -346,10 +346,12 @@ function Dashboard({ onSignOut, userEmail, userId }: { onSignOut:()=>void; userE
         parsed=[['Date','Title','Type','Amount'],...extracted.map(r=>[r.date,r.title,r.type,String(r.amount)])]
         if(extracted.length===0){setImportError('No readable transaction rows were detected. This may be a scanned PDF or an unsupported statement layout. Try a text-based PDF or CSV export.');return}
       } else {setImportError('Please choose a CSV or PDF statement.');return}
-      if(parsed.length<2){setImportError('This CSV has no transaction rows.');return}
-      const headers=parsed[0].map(h=>h.toLowerCase().replace(/^\uFEFF/,'').trim())
+      if(parsed.length<2){setImportError('This statement has no transaction rows.');return}
+      const headerRowIndex=file.name.toLowerCase().endsWith('.csv')?parsed.findIndex(row=>{const cells=row.map(v=>v.toLowerCase().replace(/^\uFEFF/,'').trim());return (cells.includes('timestamp')||cells.includes('date')||cells.includes('transaction date'))&&cells.includes('description')&&cells.includes('amount')}):0
+      if(headerRowIndex<0){setImportError('Could not find the transaction table in this CSV.');return}
+      const headers=parsed[headerRowIndex].map(h=>h.toLowerCase().replace(/^\uFEFF/,'').trim())
       const idx=(...names:string[])=>headers.findIndex(h=>names.includes(h))
-      const dateIdx=idx('date','transaction date','value date','occurred_at','datetime','transaction datetime')
+      const dateIdx=idx('date','timestamp','transaction date','value date','occurred_at','datetime','transaction datetime')
       const titleIdx=idx('title','description','transaction','name','narration','particulars','transaction details','details')
       const typeIdx=idx('type','direction','transaction type')
       const amountIdx=idx('amount','value')
@@ -360,14 +362,16 @@ function Dashboard({ onSignOut, userEmail, userId }: { onSignOut:()=>void; userE
       if(dateIdx<0||titleIdx<0||(typeIdx<0&&amountIdx<0&&debitIdx<0&&creditIdx<0)){setImportError('Could not identify statement columns. Use Date, Description, Type, Amount, or Debit and Credit columns.');return}
       const seen=new Set<string>()
       const valid:CsvImportRow[]=[];let invalid=0
-      parsed.slice(1).forEach((cells,i)=>{
-        const title=cells[titleIdx]||''
+      parsed.slice(headerRowIndex+1).forEach((cells,i)=>{
+        const description=cells[titleIdx]||''
         const amountCell=amountIdx>=0?cells[amountIdx]||'':''
         const debit=debitIdx>=0?Number((cells[debitIdx]||'').replace(/[,\s]/g,'')):0
         const credit=creditIdx>=0?Number((cells[creditIdx]||'').replace(/[,\s]/g,'')):0
         const amount=amountCell?Math.abs(Number(amountCell.replace(/[,\s]/g,''))):credit>0?credit:debit
         const type=typeIdx>=0?(cells[typeIdx]||'').toLowerCase():''
-        const direction=type==='income'||type==='incoming'||type==='credit'?'incoming':type==='expense'||type==='outgoing'||type==='debit'?'outgoing':credit>0?'incoming':debit>0?'outgoing':amountCell.startsWith('-')?'outgoing':null
+        const signedAmount=amountCell.trim()
+        const direction=signedAmount.startsWith('-')?'outgoing':signedAmount.startsWith('+')?'incoming':type==='income'||type==='incoming'||type==='credit'||/\\b(in|received|reversal|refund)\\b/i.test(type)?'incoming':type==='expense'||type==='outgoing'||type==='debit'||/\\b(out|sent|top.?up|payment)\\b/i.test(type)?'outgoing':credit>0?'incoming':debit>0?'outgoing':null
+        const title=[type,description.split(/\\r?\\n/)[0]].filter(Boolean).join(' · ')
         const dateValue=cells[dateIdx]||''
         const date=parseStatementDate(dateValue)
         if(!title||!Number.isFinite(amount)||amount<=0||!direction||!dateValue||Number.isNaN(date.getTime())){invalid++;return}
@@ -382,7 +386,7 @@ function Dashboard({ onSignOut, userEmail, userId }: { onSignOut:()=>void; userE
       })
       setImportRows(valid);setImportInvalid(invalid)
       if(!valid.length)setImportError('No valid transactions found. Check your CSV columns and values.')
-    }catch{setImportError('Could not read this CSV file. Please try another file.')}
+    }catch{setImportError('Could not read this statement. Please try another PDF or CSV export.')}
   }
   const confirmCsvImport=async()=>{
     if(!supabase||!importRows.length)return
