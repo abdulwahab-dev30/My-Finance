@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "name": "My Finance",
+    "slug": "my-finance",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "splash": { "backgroundColor": "#f6f8fa" },
+    "ios": { "supportsTablet": true, "bundleIdentifier": "com.abdulwahab.myfinance" },
+    "android": { "package": "com.abdulwahab.myfinance", "adaptiveIcon": { "backgroundColor": "#145c4d" } }
+  }
+}
