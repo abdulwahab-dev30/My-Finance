@@ -96,3 +96,29 @@
 .csv-preview-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
 .csv-preview-actions .primary-btn{font-size:10px;width:auto;height:36px;justify-content:center}
 @media(max-width:700px){.csv-preview{padding:10px}.csv-preview-head{align-items:flex-start}.csv-preview-head>div:last-child{gap:3px}.csv-preview-head .text-btn{font-size:8px}.csv-preview-actions .secondary-btn{height:36px;font-size:10px;width:auto;padding:0 12px}}
+
+/* Recurring schedules and bill reminders */
+.recurring-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:16px 0}
+.recurring-summary>div{padding:13px 15px;border:1px solid #edf0f3;border-radius:10px;background:#fbfcfb}
+.recurring-summary b{display:block;font:800 20px Manrope,sans-serif;color:#263648}
+.recurring-summary span{display:block;font-size:9px;color:#8b978f;margin-top:3px}
+.recurring-list{display:grid;gap:10px}
+.recurring-card{display:grid;grid-template-columns:38px minmax(0,1fr) auto auto;align-items:center;gap:11px;padding:14px 12px;border:1px solid #edf0f3;border-radius:11px;background:#fff}
+.recurring-icon{width:36px;height:36px;border-radius:10px;display:grid;place-items:center}
+.recurring-icon.income{background:#eaf7f1;color:#269d79}
+.recurring-icon.expense{background:#fff4e9;color:#d49a55}
+.recurring-copy{min-width:0}
+.recurring-title{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.recurring-title>b{font-size:11px;color:#344456}
+.recurring-copy p{font-size:9px;color:#8c98a4;margin:4px 0}
+.recurring-copy small{font-size:8px;color:#a0aab4}
+.recurring-card>strong{font-size:11px;white-space:nowrap}
+.recurring-status{font-size:8px;font-weight:700;padding:4px 7px;border-radius:20px}
+.recurring-status.overdue{background:#fff0ed;color:#b85445}
+.recurring-status.due-soon{background:#fff6e9;color:#a87331}
+.recurring-status.scheduled{background:#edf7f1;color:#398364}
+.recurring-status.paused{background:#f0f2f4;color:#87929f}
+.recurring-actions{display:flex;align-items:center;gap:1px}
+.record-recurring-btn{grid-column:2/-1;justify-self:end;display:flex;align-items:center;gap:6px;border:1px solid #dcebe3;background:#f5fbf7;color:#177d5b;border-radius:7px;padding:7px 10px;font:700 9px 'DM Sans';cursor:pointer}
+.record-recurring-btn:disabled{opacity:.5;cursor:wait}
+@media(max-width:700px){.recurring-summary{gap:6px}.recurring-summary>div{padding:10px}.recurring-summary b{font-size:17px}.recurring-summary span{font-size:8px}.recurring-card{grid-template-columns:34px minmax(0,1fr) auto;gap:8px;padding:11px 9px}.recurring-icon{width:32px;height:32px}.recurring-card>strong{grid-column:3;grid-row:1;font-size:10px}.recurring-actions{grid-column:2/-1;justify-self:end}.record-recurring-btn{grid-column:2/-1}}
