@@ -16,6 +16,12 @@ npm run dev
 npm run build
 ```
 
+## Android app (Capacitor)
+
+The web dashboard is configured to build as a native Android app with Capacitor. See [`docs/ANDROID-APP.md`](docs/ANDROID-APP.md) for Android Studio setup, device testing, and signed AAB release steps.
+
+First-time setup: `npm install`, `npx cap add android`, `npm run mobile:build`, then `npm run cap:open:android`.
+
 ## Environment
 Copy `.env.example` to `.env.local` and configure:
 - `VITE_SUPABASE_URL`
