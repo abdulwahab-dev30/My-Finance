@@ -107,6 +107,11 @@ function Dashboard({ onSignOut, userEmail, userId }: { onSignOut:()=>void; userE
   const [walletFilter,setWalletFilter]=useState('all')
   const [showBalance,setShowBalance]=useState(true)
   const [settingsBusy,setSettingsBusy]=useState(false)
+  const [passwordBusy,setPasswordBusy]=useState(false)
+  const [currentPassword,setCurrentPassword]=useState('')
+  const [newPassword,setNewPassword]=useState('')
+  const [confirmPassword,setConfirmPassword]=useState('')
+  const [showPasswordFields,setShowPasswordFields]=useState(false)
   const [notice,setNotice]=useState('')
   const [mobileNav,setMobileNav]=useState(false)
   const [modal,setModal]=useState<'transaction'|'category'|'budget'|'recurring'|null>(null)
@@ -399,6 +404,21 @@ function Dashboard({ onSignOut, userEmail, userId }: { onSignOut:()=>void; userE
     const csv='Date,Title,Type,Category,Wallet,Amount\n2026-11-04T10:30:00,Grocery shopping,expense,Food,My NayaPay,1500\n2026-11-04T12:00:00,Salary,income,Salary,My NayaPay,50000'
     const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));const a=document.createElement('a');a.href=url;a.download='my-finance-import-template.csv';a.click();URL.revokeObjectURL(url)
   }
+  const changePassword=async(e:React.FormEvent)=>{
+    e.preventDefault()
+    if(!supabase||!userEmail){setNotice('Your account session is unavailable. Please sign in again.');return}
+    if(newPassword.length<8){setNotice('New password must be at least 8 characters.');return}
+    if(newPassword!==confirmPassword){setNotice('New password and confirmation do not match.');return}
+    if(currentPassword===newPassword){setNotice('Choose a password different from your current password.');return}
+    setPasswordBusy(true)
+    const {error:verifyError}=await supabase.auth.signInWithPassword({email:userEmail,password:currentPassword})
+    if(verifyError){setPasswordBusy(false);setNotice('Current password is incorrect.');return}
+    const {error}=await supabase.auth.updateUser({password:newPassword})
+    setPasswordBusy(false)
+    if(error){setNotice('Could not change password: '+error.message);return}
+    setCurrentPassword('');setNewPassword('');setConfirmPassword('');setShowPasswordFields(false)
+    setNotice('Your password has been changed successfully.')
+  }
   const exportCsv=()=>{
     const rows=[['Date','Title','Type','Category','Wallet','Amount'],...filtered.map(t=>[t.occurred_at,t.title,t.direction,t.categories?.name||'',t.wallet_accounts?.display_name||'',String(t.amount)])]
     const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n')
@@ -460,7 +480,7 @@ function Dashboard({ onSignOut, userEmail, userId }: { onSignOut:()=>void; userE
         {active==='Settings'&&<section className="settings-page">
           <section className="panel settings-profile"><div className="settings-avatar">{(userEmail[0]||'U').toUpperCase()}</div><div><h2>Account profile</h2><p>{userEmail||'Signed-in account'}</p><small>Your My Finance account details</small></div></section>
           <section className="panel settings-section"><div className="settings-section-head"><div><h2>Preferences</h2><p>Control how your financial information appears.</p></div></div><div className="settings-row"><div><b>Hide balances</b><span>Mask balance amounts across Overview and account summaries.</span></div><button className={'settings-toggle '+(!showBalance?'enabled':'')} role="switch" aria-checked={!showBalance} onClick={()=>setShowBalance(!showBalance)}><i/></button></div><div className="settings-row"><div><b>Display currency</b><span>Pakistani Rupee (PKR)</span></div><span className="settings-value">PKR ₨</span></div></section>
-          <section className="panel settings-section"><div className="settings-section-head"><div><h2>Security & data</h2><p>Manage account access and your records.</p></div></div><div className="settings-action-row"><div><b>Password reset</b><span>Send a secure password reset link to your email address.</span></div><button className="secondary-btn" disabled={settingsBusy} onClick={async()=>{if(!supabase||!userEmail)return;setSettingsBusy(true);const {error}=await supabase.auth.resetPasswordForEmail(userEmail,{redirectTo:window.location.origin});setSettingsBusy(false);setNotice(error?'Could not send reset email: '+error.message:'Password reset link sent to '+userEmail+'.')}}>{settingsBusy?'Sending…':'Send reset link'}</button></div><div className="settings-action-row"><div><b>Export transactions</b><span>Download your currently filtered transaction list as CSV.</span></div><button className="secondary-btn" onClick={exportCsv}><Download size={14}/> Export CSV</button></div><div className="settings-action-row"><div><b>Sign out</b><span>End your current My Finance session.</span></div><button className="secondary-btn settings-signout" onClick={onSignOut}><LogOut size={14}/> Sign out</button></div></section>
+          <section className="panel settings-section"><div className="settings-section-head"><div><h2>Security & data</h2><p>Manage account access and your records.</p></div></div><div className="settings-action-row"><div><b>Change password</b><span>Update your password securely. Your current password is required.</span></div><button className="secondary-btn" onClick={()=>setShowPasswordFields(v=>!v)}>{showPasswordFields?'Cancel':'Change password'}</button></div>{showPasswordFields&&<form className="password-change-form" onSubmit={changePassword}><label>Current password<input type="password" autoComplete="current-password" required value={currentPassword} onChange={e=>setCurrentPassword(e.target.value)} placeholder="Enter current password"/></label><label>New password<input type="password" autoComplete="new-password" minLength={8} required value={newPassword} onChange={e=>setNewPassword(e.target.value)} placeholder="At least 8 characters"/></label><label>Confirm new password<input type="password" autoComplete="new-password" minLength={8} required value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} placeholder="Re-enter new password"/></label><p className="form-hint">Use at least 8 characters. Your new password must match the confirmation.</p><button className="primary-btn" type="submit" disabled={passwordBusy}>{passwordBusy?'Updating password…':'Update password'}</button></form>}<div className="settings-action-row"><div><b>Password reset</b><span>Send a secure password reset link to your email address.</span></div><button className="secondary-btn" disabled={settingsBusy} onClick={async()=>{if(!supabase||!userEmail)return;setSettingsBusy(true);const {error}=await supabase.auth.resetPasswordForEmail(userEmail,{redirectTo:window.location.origin});setSettingsBusy(false);setNotice(error?'Could not send reset email: '+error.message:'Password reset link sent to '+userEmail+'.')}}>{settingsBusy?'Sending…':'Send reset link'}</button></div><div className="settings-action-row"><div><b>Export transactions</b><span>Download your currently filtered transaction list as CSV.</span></div><button className="secondary-btn" onClick={exportCsv}><Download size={14}/> Export CSV</button></div><div className="settings-action-row"><div><b>Sign out</b><span>End your current My Finance session.</span></div><button className="secondary-btn settings-signout" onClick={onSignOut}><LogOut size={14}/> Sign out</button></div></section>
           <p className="insights-footnote"><ShieldCheck size={14}/> Currency is currently PKR throughout the app. Multi-currency support is not enabled.</p>
         </section>}
         {loadingData&&<div className="loading-inline">Loading your financial records…</div>}
