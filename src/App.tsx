@@ -219,7 +219,7 @@ function Dashboard({ onSignOut, userEmail, userId }: { onSignOut:()=>void; userE
       const valid:CsvImportRow[]=[];let invalid=0
       parsed.slice(1).forEach((cells,i)=>{
         const title=cells[titleIdx]||''
-        const amount=Number((cells[amountIdx]||'').replace(/[,\\s]/g,''))
+        const amount=Number((cells[amountIdx]||'').replace(/[,\s]/g,''))
         const type=(cells[typeIdx]||'').toLowerCase()
         const direction=type==='income'||type==='incoming'||type==='credit'?'incoming':type==='expense'||type==='outgoing'||type==='debit'?'outgoing':null
         const dateValue=cells[dateIdx]||''
