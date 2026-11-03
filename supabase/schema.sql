@@ -129,6 +129,9 @@ create policy "recurring item owner access" on public.recurring_items
 
 create index if not exists recurring_items_user_due_idx
   on public.recurring_items(user_id, is_active, next_due_on);
+create index if not exists recurring_items_category_id_idx on public.recurring_items(category_id);
+create index if not exists recurring_items_wallet_id_idx on public.recurring_items(wallet_id);
+grant select, insert, update, delete on public.recurring_items to authenticated;
 create unique index if not exists transactions_recurring_occurrence_unique
   on public.transactions(recurring_item_id, recurring_occurrence_on)
   where recurring_item_id is not null and recurring_occurrence_on is not null;
