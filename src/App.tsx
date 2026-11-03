@@ -5,6 +5,7 @@ import { supabase, isSupabaseConfigured } from './lib/supabase'
 import type { Session } from '@supabase/supabase-js'
 import { ArrowDownLeft, ArrowUpRight, Bell, CircleHelp, CreditCard, Download, Eye, EyeOff, Filter, Home, Menu, MoreHorizontal, Pencil, Plus, Search, Settings, ShieldCheck, Tag, Target, Trash2, TrendingUp, Upload, Wallet, X, Zap, Building2, Link2, LockKeyhole } from 'lucide-react'
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis } from 'recharts'
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { bankInstitutions, type BankInstitution } from './lib/bankConnections'
 
 type WalletRow = { id:string; provider:'nayapay'|'easypaisa'|'manual'; display_name:string; connection_status:string }
@@ -56,7 +57,7 @@ function parseCsvText(text:string): string[][] {
 }
 async function extractPdfStatementRows(file:File):Promise<StatementRow[]> {
   const pdfjs = await import('pdfjs-dist')
-  pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString()
+  pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
   const pdf = await pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise
   const lines:string[]=[]
   for(let pageNo=1;pageNo<=pdf.numPages;pageNo++){
