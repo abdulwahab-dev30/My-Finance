@@ -35,9 +35,7 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      # GitHub-hosted Ubuntu runners already include Android SDK tools.
-      # Avoid setup-android here: it can replace the runner's sdkmanager
-      # and fail while reconciling preinstalled command-line tools.
+      # Use the Android SDK already installed on the GitHub-hosted runner.
 
       - name: Install dependencies
         run: npm install
@@ -47,6 +45,9 @@ jobs:
 
       - name: Build and sync app
         run: npm run mobile:build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
       - name: Build APK
         working-directory: android
