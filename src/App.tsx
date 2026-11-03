@@ -371,7 +371,7 @@ function Dashboard({ onSignOut, userEmail, userId }: { onSignOut:()=>void; userE
         const type=typeIdx>=0?(cells[typeIdx]||'').toLowerCase():''
         const signedAmount=amountCell.trim()
         const direction=signedAmount.startsWith('-')?'outgoing':signedAmount.startsWith('+')?'incoming':type==='income'||type==='incoming'||type==='credit'||type==='raast in'||type==='ibft in'||type.includes('received')||type.includes('reversal')||type.includes('refund')?'incoming':type==='expense'||type==='outgoing'||type==='debit'||type==='raast out'||type.includes('sent')||type.includes('top-up')||type.includes('payment')?'outgoing':credit>0?'incoming':debit>0?'outgoing':null
-        const title=[type,description.split(/\\r?\\n/)[0]].filter(Boolean).join(' · ')
+        const title=[type,description.split(/\r?\n/)[0]].filter(Boolean).join(' · ')
         const dateValue=cells[dateIdx]||''
         const date=parseStatementDate(dateValue)
         if(!title||!Number.isFinite(amount)||amount<=0||!direction||!dateValue||Number.isNaN(date.getTime())){invalid++;return}
