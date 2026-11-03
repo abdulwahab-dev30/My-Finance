@@ -49,6 +49,7 @@ function Dashboard({ onSignOut, userEmail, userId }: { onSignOut:()=>void; userE
   const [txDescription,setTxDescription]=useState('')
   const [walletProvider,setWalletProvider]=useState<'nayapay'|'easypaisa'|'manual'>('nayapay')
   const [walletName,setWalletName]=useState('')
+  const [insightRange,setInsightRange]=useState<'7d'|'30d'|'month'|'90d'|'all'>('30d')
 
   const loadData=useCallback(async()=>{
     if(!supabase)return
@@ -82,6 +83,34 @@ function Dashboard({ onSignOut, userEmail, userId }: { onSignOut:()=>void; userE
   const totalBalance=transactions.reduce((s,t)=>s+(t.direction==='incoming'?1:-1)*Number(t.amount),0)
   const walletBalance=(id:string)=>transactions.filter(t=>t.wallet_id===id).reduce((s,t)=>s+(t.direction==='incoming'?1:-1)*Number(t.amount),0)
   const filtered=useMemo(()=>transactions.filter(t=>(walletFilter==='all'||t.wallet_id===walletFilter)&&((t.title+' '+(t.categories?.name||'')+' '+(t.wallet_accounts?.display_name||'')).toLowerCase().includes(query.toLowerCase()))),[transactions,walletFilter,query])
+  const insightStart=useMemo(()=>{
+    const d=new Date();d.setHours(0,0,0,0)
+    if(insightRange==='7d')d.setDate(d.getDate()-6)
+    else if(insightRange==='30d')d.setDate(d.getDate()-29)
+    else if(insightRange==='90d')d.setDate(d.getDate()-89)
+    else if(insightRange==='month')d.setDate(1)
+    else return null
+    return d
+  },[insightRange])
+  const insightTx=transactions.filter(t=>!insightStart||new Date(t.occurred_at)>=insightStart)
+  const insightIncome=insightTx.filter(t=>t.direction==='incoming').reduce((s,t)=>s+Number(t.amount),0)
+  const insightExpense=insightTx.filter(t=>t.direction==='outgoing').reduce((s,t)=>s+Number(t.amount),0)
+  const categorySpend=Object.values(insightTx.filter(t=>t.direction==='outgoing').reduce((acc,t)=>{
+    const name=t.categories?.name||'Uncategorized'
+    acc[name]=(acc[name]||0)+Number(t.amount);return acc
+  },{} as Record<string,number>)).length
+    ? Object.entries(insightTx.filter(t=>t.direction==='outgoing').reduce((acc,t)=>{
+        const name=t.categories?.name||'Uncategorized';acc[name]=(acc[name]||0)+Number(t.amount);return acc
+      },{} as Record<string,number>)).map(([name,amount])=>({name,amount})).sort((x,y)=>y.amount-x.amount)
+    : []
+  const monthlyTrend=Array.from({length:6},(_,i)=>{
+    const d=new Date();d.setDate(1);d.setMonth(d.getMonth()-(5-i))
+    const next=new Date(d);next.setMonth(next.getMonth()+1)
+    const rows=transactions.filter(t=>new Date(t.occurred_at)>=d&&new Date(t.occurred_at)<next)
+    return {month:d.toLocaleDateString('en-PK',{month:'short'}),income:rows.filter(t=>t.direction==='incoming').reduce((s,t)=>s+Number(t.amount),0),expenses:rows.filter(t=>t.direction==='outgoing').reduce((s,t)=>s+Number(t.amount),0)}
+  })
+  const topExpenses=insightTx.filter(t=>t.direction==='outgoing').sort((x,y)=>Number(y.amount)-Number(x.amount)).slice(0,5)
+
   const chartData=Array.from({length:7},(_,i)=>{
     const d=new Date();d.setDate(d.getDate()-(6-i));d.setHours(0,0,0,0)
     const next=new Date(d);next.setDate(next.getDate()+1)
@@ -177,7 +206,20 @@ function Dashboard({ onSignOut, userEmail, userId }: { onSignOut:()=>void; userE
         {active==='My wallets'&&<section className="panel transactions-panel"><div className="section-heading"><div><h2>Your wallets</h2><p>Add manual accounts and track their balances.</p></div><button className="primary-btn" onClick={()=>setModal('wallet')}><Plus size={16}/> Add wallet</button></div><div className="wallet-grid">{wallets.map(w=><div className="wallet-card nayapay" key={w.id}><div className="provider-name">{w.display_name}</div><div className="wallet-balance">Rs. {money(walletBalance(w.id))}</div><div className="wallet-card-bottom">{w.provider} · Manual tracking</div></div>)}{!wallets.length&&<div className="empty-state">No wallets added yet.</div>}</div></section>}
         {active==='Categories'&&<section className="panel transactions-panel"><div className="section-heading"><div><h2>Categories</h2><p>Organize income and expenses with your own categories.</p></div><button className="primary-btn" onClick={()=>{setEditingCategory(null);setCategoryName('');setCategoryKind('expense');setModal('category')}}><Plus size={16}/> Add category</button></div><div className="category-groups">{(['expense','income'] as const).map(kind=><div className="category-group" key={kind}><h3>{kind==='expense'?'Expense categories':'Income categories'}</h3>{categories.filter(cat=>cat.kind===kind).map(cat=><div className="category-row" key={cat.id}><span className={'category-dot '+kind}/><b>{cat.name}</b><span className="category-scope">{cat.user_id===userId?'Custom':'Default'}</span>{cat.user_id===userId&&<><button className="row-action" onClick={()=>{setEditingCategory(cat);setCategoryName(cat.name);setCategoryKind(cat.kind);setModal('category')}} title="Edit"><Pencil size={15}/></button><button className="row-action danger" onClick={()=>removeCategory(cat.id)} title="Delete"><Trash2 size={15}/></button></>}</div>)}{!categories.some(cat=>cat.kind===kind)&&<div className="empty-state">No categories yet.</div>}</div>)}</div></section>}
         {active==='Budgets'&&<section className="panel transactions-panel"><div className="section-heading"><div><h2>Your budgets</h2><p>Track category spending against weekly or monthly limits.</p></div><button className="primary-btn" onClick={()=>{setEditingBudget(null);setBudgetName('');setBudgetAmount('');setBudgetPeriod('monthly');setBudgetCategory('');setBudgetStart(new Date().toISOString().slice(0,10));setModal('budget')}}><Plus size={16}/> Create budget</button></div><div className="budget-grid">{budgets.map(b=>{const used=budgetSpent(b);const pct=Math.min(100,used/Number(b.amount)*100);const over=used>Number(b.amount);return <div className="budget-card" key={b.id}><div className="budget-card-head"><div><span className="budget-kicker">{b.period.toUpperCase()} BUDGET</span><h3>{b.name}</h3><p>{b.categories?.name||'All expenses'}</p></div><div className="budget-actions"><button className="row-action" onClick={()=>{setEditingBudget(b);setBudgetName(b.name);setBudgetAmount(String(b.amount));setBudgetPeriod(b.period);setBudgetCategory(b.category_id||'');setBudgetStart(b.starts_on);setModal('budget')}} title="Edit budget"><Pencil size={15}/></button><button className="row-action danger" onClick={()=>removeBudget(b.id)} title="Delete budget"><Trash2 size={15}/></button></div></div><div className="budget-amounts"><b>Rs. {money(used)}</b><span>of Rs. {money(Number(b.amount))}</span></div><div className="budget-progress"><i style={{width:pct+'%',background:over?'#d66b55':'#269d79'}}/></div><div className="budget-foot"><span>{Math.round(pct)}% used</span><span className={over?'budget-over':''}>{over?'Over by':'Remaining'} Rs. {money(Math.abs(Number(b.amount)-used))}</span></div></div>})}{!budgets.length&&<div className="empty-state">No budgets yet. Create a weekly or monthly budget to start tracking spending.</div>}</div></section>}
-        {active==='Insights'&&<section className="panel transactions-panel"><h2>Insights</h2><p>Your charts and totals are calculated from your saved transactions.</p><p>Monthly income: Rs. {money(received)} · Monthly expenses: Rs. {money(spent)}</p></section>}
+        {active==='Insights'&&<div className="insights-page">
+          <div className="insights-toolbar"><div><h2>Financial overview</h2><p>Reports calculated from your saved transactions.</p></div><div className="range-switch">{([{id:'7d',label:'7 days'},{id:'30d',label:'30 days'},{id:'month',label:'This month'},{id:'90d',label:'90 days'},{id:'all',label:'All time'}] as const).map(r=><button key={r.id} className={insightRange===r.id?'selected':''} onClick={()=>setInsightRange(r.id)}>{r.label}</button>)}</div></div>
+          <section className="insight-summary-grid">
+            <div className="insight-stat"><span>Total income</span><b className="income-text">Rs. {money(insightIncome)}</b><small>{insightTx.filter(t=>t.direction==='incoming').length} transactions</small></div>
+            <div className="insight-stat"><span>Total expenses</span><b>Rs. {money(insightExpense)}</b><small>{insightTx.filter(t=>t.direction==='outgoing').length} transactions</small></div>
+            <div className="insight-stat"><span>Net savings</span><b className={insightIncome-insightExpense>=0?'income-text':'expense-text'}>Rs. {money(insightIncome-insightExpense)}</b><small>Income minus expenses</small></div>
+          </section>
+          <section className="panel insight-chart-panel"><div className="section-heading"><div><h2>Monthly cash flow</h2><p>Income and expenses over the last six months.</p></div></div><div className="chart-legend"><span><i className="legend-in"/> Income</span><span><i className="legend-out"/> Expenses</span></div><div className="insights-chart"><ResponsiveContainer width="100%" height="100%"><AreaChart data={monthlyTrend} margin={{top:10,right:8,left:-20,bottom:0}}><defs><linearGradient id="insightIncome" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#269d79" stopOpacity={.2}/><stop offset="100%" stopColor="#269d79" stopOpacity={0}/></linearGradient><linearGradient id="insightExpense" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#e6a45c" stopOpacity={.2}/><stop offset="100%" stopColor="#e6a45c" stopOpacity={0}/></linearGradient></defs><CartesianGrid stroke="#edf0f3" vertical={false}/><XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fill:'#9aa3af',fontSize:11}} dy={8}/><Tooltip formatter={(v:any)=>['Rs. '+money(Number(v)),'']}/><Area type="monotone" dataKey="income" name="Income" stroke="#269d79" strokeWidth={2.5} fill="url(#insightIncome)"/><Area type="monotone" dataKey="expenses" name="Expenses" stroke="#e6a45c" strokeWidth={2.5} fill="url(#insightExpense)"/></AreaChart></ResponsiveContainer></div></section>
+          <div className="insights-detail-grid">
+            <section className="panel"><div className="section-heading"><div><h2>Spending by category</h2><p>Where your money is going.</p></div></div>{categorySpend.length? <div className="category-spend-list">{categorySpend.map(c=><div className="category-spend-row" key={c.name}><div><b>{c.name}</b><span>Rs. {money(c.amount)}</span></div><div className="category-spend-track"><i style={{width:Math.min(100,c.amount/Math.max(...categorySpend.map(x=>x.amount))*100)+'%'}}/></div><small>{insightExpense?Math.round(c.amount/insightExpense*100):0}%</small></div>)}</div>:<div className="empty-state">No expense records in this period.</div>}</section>
+            <section className="panel"><div className="section-heading"><div><h2>Highest expenses</h2><p>Your largest recorded outgoing transactions.</p></div></div>{topExpenses.length?topExpenses.map(t=><div className="top-expense-row" key={t.id}><div><b>{t.title}</b><span>{t.categories?.name||'Uncategorized'} · {new Date(t.occurred_at).toLocaleDateString('en-PK',{day:'numeric',month:'short',year:'numeric'})}</span></div><strong>Rs. {money(Number(t.amount))}</strong></div>):<div className="empty-state">No expenses recorded in this period.</div>}</section>
+          </div>
+          <p className="insights-footnote"><ShieldCheck size={14}/> Reports use your latest 500 saved transactions. All amounts are in PKR.</p>
+        </div>}
         {loadingData&&<div className="loading-inline">Loading your financial records…</div>}
         <footer><span>© 2026 My Finance</span><span><ShieldCheck size={13}/> Your financial data stays yours.</span></footer>
       </div>
