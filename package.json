@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "cap:sync": "cap sync android",
+    "cap:open:android": "cap open android",
+    "mobile:build": "npm run build && cap sync android"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.0",
@@ -14,13 +17,19 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "recharts": "^2.15.0",
-    "pdfjs-dist": "^4.10.38"
+    "pdfjs-dist": "^4.10.38",
+    "@capacitor/android": "^7.4.3",
+    "@capacitor/core": "^7.4.3",
+    "@capacitor/keyboard": "^7.4.3",
+    "@capacitor/splash-screen": "^7.4.3",
+    "@capacitor/status-bar": "^7.4.3"
   },
   "devDependencies": {
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",
     "typescript": "^5.7.3",
-    "vite": "^6.0.7"
+    "vite": "^6.0.7",
+    "@capacitor/cli": "^7.4.3"
   }
 }
