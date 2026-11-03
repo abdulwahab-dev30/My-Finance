@@ -96,3 +96,39 @@ create index if not exists budgets_category_id_idx on public.budgets(category_id
 create index if not exists transactions_category_id_idx on public.transactions(category_id);
 create index if not exists transactions_wallet_id_idx on public.transactions(wallet_id);
 create index if not exists budgets_user_idx on public.budgets(user_id, starts_on);
+-- Recurring transactions and in-app bill reminders.
+create table if not exists public.recurring_items (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  title text not null,
+  amount numeric(18,2) not null check (amount > 0),
+  direction text not null check (direction in ('incoming','outgoing')),
+  frequency text not null check (frequency in ('weekly','monthly','yearly')),
+  next_due_on date not null,
+  end_on date,
+  reminder_days integer not null default 3 check (reminder_days between 0 and 30),
+  wallet_id uuid references public.wallet_accounts(id) on delete set null,
+  category_id uuid references public.categories(id) on delete set null,
+  notes text,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  check (end_on is null or end_on >= next_due_on)
+);
+
+alter table public.transactions
+  add column if not exists recurring_item_id uuid references public.recurring_items(id) on delete set null,
+  add column if not exists recurring_occurrence_on date;
+
+alter table public.recurring_items enable row level security;
+drop policy if exists "recurring item owner access" on public.recurring_items;
+create policy "recurring item owner access" on public.recurring_items
+  for all to authenticated
+  using ((select auth.uid()) = user_id)
+  with check ((select auth.uid()) = user_id);
+
+create index if not exists recurring_items_user_due_idx
+  on public.recurring_items(user_id, is_active, next_due_on);
+create unique index if not exists transactions_recurring_occurrence_unique
+  on public.transactions(recurring_item_id, recurring_occurrence_on)
+  where recurring_item_id is not null and recurring_occurrence_on is not null;
