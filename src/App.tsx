@@ -3,7 +3,7 @@ import { LogOut } from 'lucide-react'
 import Auth from './Auth'
 import { supabase, isSupabaseConfigured } from './lib/supabase'
 import type { Session } from '@supabase/supabase-js'
-import { ArrowDownLeft, ArrowUpRight, Bell, CircleHelp, CreditCard, Download, Eye, EyeOff, Filter, Home, Menu, MoreHorizontal, Pencil, Plus, Search, Settings, ShieldCheck, Tag, Target, Trash2, TrendingUp, Wallet, X, Zap } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, Bell, CircleHelp, CreditCard, Download, Eye, EyeOff, Filter, Home, Menu, MoreHorizontal, Pencil, Plus, Search, Settings, ShieldCheck, Tag, Target, Trash2, TrendingUp, Upload, Wallet, X, Zap } from 'lucide-react'
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis } from 'recharts'
 
 type WalletRow = { id:string; provider:'nayapay'|'easypaisa'|'manual'; display_name:string; connection_status:string }
@@ -13,6 +13,25 @@ type BudgetRow = { id:string; name:string; amount:number; period:'weekly'|'month
 const money = (n:number) => new Intl.NumberFormat('en-PK',{maximumFractionDigits:0}).format(n)
 const dateLabel = (v:string) => new Date(v).toLocaleString('en-PK',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})
 const today = () => new Date().toISOString().slice(0,16)
+
+type CsvImportRow = { title:string; amount:number; direction:'incoming'|'outgoing'; occurred_at:string; category_id:string|null; wallet_id:string|null; categoryLabel:string; walletLabel:string; line:number }
+function parseCsvText(text:string): string[][] {
+  const rows:string[][]=[];let row:string[]=[];let cell='';let quoted=false
+  for(let i=0;i<text.length;i++){
+    const ch=text[i]
+    if(ch==='"'&&quoted&&text[i+1]==='"'){cell+='"';i++}
+    else if(ch==='"'){quoted=!quoted}
+    else if(ch===','&&!quoted){row.push(cell.trim());cell=''}
+    else if((ch==='\n'||ch==='\r')&&!quoted){
+      if(ch==='\r'&&text[i+1]==='\n')i++
+      row.push(cell.trim());cell=''
+      if(row.some(v=>v!==''))rows.push(row)
+      row=[]
+    } else cell+=ch
+  }
+  row.push(cell.trim());if(row.some(v=>v!==''))rows.push(row)
+  return rows
+}
 const defaultCategories = [
   ...['Salary','Business','Gift','Other income'].map(name=>({name,kind:'income' as const})),
   ...['Food','Shopping','Bills & utilities','Transport','Health','Education','Entertainment','Other expense'].map(name=>({name,kind:'expense' as const}))
@@ -49,6 +68,10 @@ function Dashboard({ onSignOut, userEmail, userId }: { onSignOut:()=>void; userE
   const [txDescription,setTxDescription]=useState('')
   const [walletProvider,setWalletProvider]=useState<'nayapay'|'easypaisa'|'manual'>('nayapay')
   const [walletName,setWalletName]=useState('')
+  const [importRows,setImportRows]=useState<CsvImportRow[]>([])
+  const [importInvalid,setImportInvalid]=useState(0)
+  const [importFileName,setImportFileName]=useState('')
+  const [importError,setImportError]=useState('')
   const [insightRange,setInsightRange]=useState<'7d'|'30d'|'month'|'90d'|'all'>('30d')
 
   const loadData=useCallback(async()=>{
@@ -175,6 +198,65 @@ function Dashboard({ onSignOut, userEmail, userId }: { onSignOut:()=>void; userE
     const start=configuredStart>periodStart?configuredStart:periodStart
     return transactions.filter(t=>t.direction==='outgoing'&&(!budget.category_id||t.category_id===budget.category_id)&&new Date(t.occurred_at)>=start&&new Date(t.occurred_at)<=now).reduce((sum,t)=>sum+Number(t.amount),0)
   }
+
+  const handleCsvFile=async(file?:File)=>{
+    setImportRows([]);setImportInvalid(0);setImportError('');setImportFileName(file?.name||'')
+    if(!file)return
+    if(!file.name.toLowerCase().endsWith('.csv')){setImportError('Please choose a .csv file.');return}
+    try{
+      const parsed=parseCsvText(await file.text())
+      if(parsed.length<2){setImportError('This CSV has no transaction rows.');return}
+      const headers=parsed[0].map(h=>h.toLowerCase().replace(/^\uFEFF/,'').trim())
+      const idx=(...names:string[])=>headers.findIndex(h=>names.includes(h))
+      const dateIdx=idx('date','occurred_at','datetime')
+      const titleIdx=idx('title','description','transaction','name')
+      const typeIdx=idx('type','direction','transaction type')
+      const amountIdx=idx('amount','value')
+      const categoryIdx=idx('category')
+      const walletIdx=idx('wallet','account')
+      if([dateIdx,titleIdx,typeIdx,amountIdx].some(i=>i<0)){setImportError('Required columns: Date, Title, Type, Amount. Optional: Category, Wallet.');return}
+      const seen=new Set<string>()
+      const valid:CsvImportRow[]=[];let invalid=0
+      parsed.slice(1).forEach((cells,i)=>{
+        const title=cells[titleIdx]||''
+        const amount=Number((cells[amountIdx]||'').replace(/[,\\s]/g,''))
+        const type=(cells[typeIdx]||'').toLowerCase()
+        const direction=type==='income'||type==='incoming'||type==='credit'?'incoming':type==='expense'||type==='outgoing'||type==='debit'?'outgoing':null
+        const dateValue=cells[dateIdx]||''
+        const date=new Date(dateValue)
+        if(!title||!Number.isFinite(amount)||amount<=0||!direction||!dateValue||Number.isNaN(date.getTime())){invalid++;return}
+        const categoryLabel=categoryIdx>=0?(cells[categoryIdx]||''):''
+        const walletLabel=walletIdx>=0?(cells[walletIdx]||''):''
+        const category=categories.find(c=>c.kind===(direction==='incoming'?'income':'expense')&&c.name.toLowerCase()===categoryLabel.toLowerCase())
+        const wallet=wallets.find(w=>w.display_name.toLowerCase()===walletLabel.toLowerCase())
+        const fingerprint=[title.trim().toLowerCase(),amount,direction,date.toISOString()].join('|')
+        if(seen.has(fingerprint)){invalid++;return}
+        seen.add(fingerprint)
+        valid.push({title:title.trim(),amount,direction,occurred_at:date.toISOString(),category_id:category?.id||null,wallet_id:wallet?.id||null,categoryLabel,walletLabel,line:i+2})
+      })
+      setImportRows(valid);setImportInvalid(invalid)
+      if(!valid.length)setImportError('No valid transactions found. Check your CSV columns and values.')
+    }catch{setImportError('Could not read this CSV file. Please try another file.')}
+  }
+  const confirmCsvImport=async()=>{
+    if(!supabase||!importRows.length)return
+    setSaving(true);setImportError('')
+    const existing=new Set(transactions.map(t=>[t.title.trim().toLowerCase(),Number(t.amount),t.direction,new Date(t.occurred_at).toISOString()].join('|')))
+    const unique=importRows.filter(r=>!existing.has([r.title.toLowerCase(),r.amount,r.direction,r.occurred_at].join('|')))
+    const skipped=importRows.length-unique.length
+    let inserted=0
+    for(let i=0;i<unique.length;i+=250){
+      const batch=unique.slice(i,i+250).map(r=>({user_id:userId,title:r.title,amount:r.amount,direction:r.direction,occurred_at:r.occurred_at,category_id:r.category_id,wallet_id:r.wallet_id,description:r.categoryLabel&&!r.category_id?'Imported category: '+r.categoryLabel:r.walletLabel&&!r.wallet_id?'Imported wallet: '+r.walletLabel:null,source:'statement_import',currency:'PKR'}))
+      const {error}=await supabase.from('transactions').insert(batch)
+      if(error){setImportError('Import stopped after '+inserted+' rows: '+error.message);setSaving(false);await loadData();return}
+      inserted+=batch.length
+    }
+    setSaving(false);setImportRows([]);setImportFileName('');setImportInvalid(0);setNotice(inserted+' transactions imported'+(skipped?' · '+skipped+' duplicates skipped':'')+(importInvalid?' · '+importInvalid+' invalid rows skipped':'' )+'.');await loadData()
+  }
+  const downloadCsvTemplate=()=>{
+    const csv='Date,Title,Type,Category,Wallet,Amount\n2026-11-04T10:30:00,Grocery shopping,expense,Food,My NayaPay,1500\n2026-11-04T12:00:00,Salary,income,Salary,My NayaPay,50000'
+    const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));const a=document.createElement('a');a.href=url;a.download='my-finance-import-template.csv';a.click();URL.revokeObjectURL(url)
+  }
   const exportCsv=()=>{
     const rows=[['Date','Title','Type','Category','Wallet','Amount'],...filtered.map(t=>[t.occurred_at,t.title,t.direction,t.categories?.name||'',t.wallet_accounts?.display_name||'',String(t.amount)])]
     const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n')
@@ -202,7 +284,7 @@ function Dashboard({ onSignOut, userEmail, userId }: { onSignOut:()=>void; userE
         <section className="wallet-section"><div className="section-heading"><div><h2>Your wallets</h2><p>Balances calculated from transactions you record.</p></div><button className="text-btn" onClick={()=>go('My wallets')}>View all <span>→</span></button></div><div className="wallet-grid">{wallets.length?wallets.map(w=><div className={'wallet-card '+(w.provider==='easypaisa'?'easypaisa':'nayapay')} key={w.id}><div className="wallet-card-top"><div className={'provider-logo '+(w.provider==='easypaisa'?'easy':'naya')}>{w.provider==='easypaisa'?'e':w.provider==='nayapay'?'n':'₨'}</div><span className="wallet-type">{w.provider.toUpperCase()}</span><MoreHorizontal size={19}/></div><div className="provider-name">{w.display_name}</div><div className="wallet-balance">{showBalance?'Rs. '+money(walletBalance(w.id)):'••••••'}</div><div className="wallet-card-bottom"><span className="pending-dot"/> Manual tracking <span className="wallet-link">{w.connection_status}</span></div></div>):<div className="empty-state">No wallets yet. Add NayaPay, Easypaisa or a cash account to get started.</div>}</div><p className="demo-note"><ShieldCheck size={14}/> Balances are based on transactions entered in My Finance; no live wallet connection is active.</p></section>
         <section className="lower-grid"><div className="panel activity-panel"><div className="section-heading"><div><h2>Money activity</h2><p>Incoming and outgoing · last 7 days.</p></div></div><div className="chart-legend"><span><i className="legend-in"/> Received</span><span><i className="legend-out"/> Spent</span></div><div className="chart-wrap"><ResponsiveContainer width="100%" height="100%"><AreaChart data={chartData} margin={{top:10,right:5,left:-24,bottom:0}}><defs><linearGradient id="received" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#269d79" stopOpacity={.2}/><stop offset="100%" stopColor="#269d79" stopOpacity={0}/></linearGradient><linearGradient id="spent" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#e6a45c" stopOpacity={.18}/><stop offset="100%" stopColor="#e6a45c" stopOpacity={0}/></linearGradient></defs><CartesianGrid stroke="#edf0f3" vertical={false}/><XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fill:'#9aa3af',fontSize:11}} dy={9}/><Tooltip formatter={(v:any)=>['Rs. '+money(Number(v)),'']} contentStyle={{borderRadius:12,border:'1px solid #edf0f3',fontSize:12}}/><Area type="monotone" dataKey="in" stroke="#269d79" strokeWidth={2.5} fill="url(#received)"/><Area type="monotone" dataKey="out" stroke="#e6a45c" strokeWidth={2.5} fill="url(#spent)"/></AreaChart></ResponsiveContainer></div></div>
           <div className="panel insight-panel"><div className="insight-title"><div className="spark-icon"><Zap size={17}/></div><div><h2>Getting started</h2><p>Your finance workspace</p></div></div><div className="spend-total">{transactions.length} <span>transactions saved</span></div><div className="insight-tip"><ShieldCheck size={15}/><span>Start by adding your wallets, then record income and expenses. You can import statements in a later update.</span></div></div></section></>}
-        {active==='Transactions'&&<section className="panel transactions-panel"><div className="section-heading transaction-heading"><div><h2>All transactions</h2><p>Your saved income and expenses.</p></div><button className="text-btn" onClick={()=>setModal('transaction')}><Plus size={15}/> Add new</button></div><div className="transaction-tools"><div className="search-box"><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search transactions"/></div><select value={walletFilter} onChange={e=>setWalletFilter(e.target.value)}><option value="all">All wallets</option>{wallets.map(w=><option key={w.id} value={w.id}>{w.display_name}</option>)}</select><button className="filter-btn" onClick={exportCsv}><Download size={15}/> Export CSV</button></div><TransactionList rows={filtered} onDelete={removeTransaction}/></section>}
+        {active==='Transactions'&&<section className="panel transactions-panel"><div className="section-heading transaction-heading"><div><h2>All transactions</h2><p>Your saved income and expenses.</p></div><button className="text-btn" onClick={()=>setModal('transaction')}><Plus size={15}/> Add new</button></div><div className="transaction-tools"><div className="search-box"><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search transactions"/></div><select value={walletFilter} onChange={e=>setWalletFilter(e.target.value)}><option value="all">All wallets</option>{wallets.map(w=><option key={w.id} value={w.id}>{w.display_name}</option>)}</select><label className="filter-btn import-file-btn"><Upload size={15}/> Import CSV<input type="file" accept=".csv,text/csv" onChange={e=>{void handleCsvFile(e.target.files?.[0]);e.currentTarget.value=''}}/></label><button className="filter-btn" onClick={exportCsv}><Download size={15}/> Export CSV</button></div>{importError&&<div className="import-error">{importError}</div>}{importRows.length>0&&<div className="csv-preview"><div className="csv-preview-head"><div><b>{importFileName||'CSV preview'}</b><span>{importRows.length} valid rows · {importInvalid} invalid rows will be skipped</span></div><div><button className="text-btn" onClick={downloadCsvTemplate}>Download template</button><button className="row-action" onClick={()=>{setImportRows([]);setImportFileName('');setImportError('')}} title="Cancel import"><X size={16}/></button></div></div><div className="csv-preview-table"><div className="csv-preview-row csv-preview-header"><span>Date</span><span>Description</span><span>Type</span><span>Amount</span></div>{importRows.slice(0,5).map(r=><div className="csv-preview-row" key={r.line}><span>{new Date(r.occurred_at).toLocaleDateString('en-PK')}</span><span>{r.title}</span><span>{r.direction==='incoming'?'Income':'Expense'}</span><span>Rs. {money(r.amount)}</span></div>)}</div>{importRows.length>5&&<p className="form-hint">Showing first 5 of {importRows.length} rows.</p>}<div className="csv-preview-actions"><button className="secondary-btn" onClick={()=>{setImportRows([]);setImportFileName('')}}>Cancel</button><button className="primary-btn" disabled={saving} onClick={()=>void confirmCsvImport()}>{saving?'Importing…':'Import '+importRows.length+' transactions'}</button></div></div>}<TransactionList rows={filtered} onDelete={removeTransaction}/></section>}
         {active==='My wallets'&&<section className="panel transactions-panel"><div className="section-heading"><div><h2>Your wallets</h2><p>Add manual accounts and track their balances.</p></div><button className="primary-btn" onClick={()=>setModal('wallet')}><Plus size={16}/> Add wallet</button></div><div className="wallet-grid">{wallets.map(w=><div className="wallet-card nayapay" key={w.id}><div className="provider-name">{w.display_name}</div><div className="wallet-balance">Rs. {money(walletBalance(w.id))}</div><div className="wallet-card-bottom">{w.provider} · Manual tracking</div></div>)}{!wallets.length&&<div className="empty-state">No wallets added yet.</div>}</div></section>}
         {active==='Categories'&&<section className="panel transactions-panel"><div className="section-heading"><div><h2>Categories</h2><p>Organize income and expenses with your own categories.</p></div><button className="primary-btn" onClick={()=>{setEditingCategory(null);setCategoryName('');setCategoryKind('expense');setModal('category')}}><Plus size={16}/> Add category</button></div><div className="category-groups">{(['expense','income'] as const).map(kind=><div className="category-group" key={kind}><h3>{kind==='expense'?'Expense categories':'Income categories'}</h3>{categories.filter(cat=>cat.kind===kind).map(cat=><div className="category-row" key={cat.id}><span className={'category-dot '+kind}/><b>{cat.name}</b><span className="category-scope">{cat.user_id===userId?'Custom':'Default'}</span>{cat.user_id===userId&&<><button className="row-action" onClick={()=>{setEditingCategory(cat);setCategoryName(cat.name);setCategoryKind(cat.kind);setModal('category')}} title="Edit"><Pencil size={15}/></button><button className="row-action danger" onClick={()=>removeCategory(cat.id)} title="Delete"><Trash2 size={15}/></button></>}</div>)}{!categories.some(cat=>cat.kind===kind)&&<div className="empty-state">No categories yet.</div>}</div>)}</div></section>}
         {active==='Budgets'&&<section className="panel transactions-panel"><div className="section-heading"><div><h2>Your budgets</h2><p>Track category spending against weekly or monthly limits.</p></div><button className="primary-btn" onClick={()=>{setEditingBudget(null);setBudgetName('');setBudgetAmount('');setBudgetPeriod('monthly');setBudgetCategory('');setBudgetStart(new Date().toISOString().slice(0,10));setModal('budget')}}><Plus size={16}/> Create budget</button></div><div className="budget-grid">{budgets.map(b=>{const used=budgetSpent(b);const pct=Math.min(100,used/Number(b.amount)*100);const over=used>Number(b.amount);return <div className="budget-card" key={b.id}><div className="budget-card-head"><div><span className="budget-kicker">{b.period.toUpperCase()} BUDGET</span><h3>{b.name}</h3><p>{b.categories?.name||'All expenses'}</p></div><div className="budget-actions"><button className="row-action" onClick={()=>{setEditingBudget(b);setBudgetName(b.name);setBudgetAmount(String(b.amount));setBudgetPeriod(b.period);setBudgetCategory(b.category_id||'');setBudgetStart(b.starts_on);setModal('budget')}} title="Edit budget"><Pencil size={15}/></button><button className="row-action danger" onClick={()=>removeBudget(b.id)} title="Delete budget"><Trash2 size={15}/></button></div></div><div className="budget-amounts"><b>Rs. {money(used)}</b><span>of Rs. {money(Number(b.amount))}</span></div><div className="budget-progress"><i style={{width:pct+'%',background:over?'#d66b55':'#269d79'}}/></div><div className="budget-foot"><span>{Math.round(pct)}% used</span><span className={over?'budget-over':''}>{over?'Over by':'Remaining'} Rs. {money(Math.abs(Number(b.amount)-used))}</span></div></div>})}{!budgets.length&&<div className="empty-state">No budgets yet. Create a weekly or monthly budget to start tracking spending.</div>}</div></section>}
