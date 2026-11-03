@@ -3,10 +3,12 @@ import { LogOut } from 'lucide-react'
 import Auth from './Auth'
 import { supabase, isSupabaseConfigured } from './lib/supabase'
 import type { Session } from '@supabase/supabase-js'
-import { ArrowDownLeft, ArrowUpRight, Bell, CircleHelp, CreditCard, Download, Eye, EyeOff, Filter, Home, Menu, MoreHorizontal, Pencil, Plus, Search, Settings, ShieldCheck, Tag, Target, Trash2, TrendingUp, Upload, Wallet, X, Zap } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, Bell, CircleHelp, CreditCard, Download, Eye, EyeOff, Filter, Home, Menu, MoreHorizontal, Pencil, Plus, Search, Settings, ShieldCheck, Tag, Target, Trash2, TrendingUp, Upload, Wallet, X, Zap, Building2, Link2, LockKeyhole } from 'lucide-react'
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis } from 'recharts'
+import { bankInstitutions, type BankInstitution } from './lib/bankConnections'
 
 type WalletRow = { id:string; provider:'nayapay'|'easypaisa'|'manual'; display_name:string; connection_status:string }
+type BankRequestRow = { id:string; institution_code:string; institution_name:string; access_status:string; created_at:string }
 type CategoryRow = { id:string; name:string; kind:'income'|'expense'; user_id:string|null }
 type TxRow = { id:string; title:string; amount:number; direction:'incoming'|'outgoing'; occurred_at:string; description:string|null; wallet_id:string|null; category_id:string|null; wallet_accounts?:{display_name:string}|null; categories?:{name:string}|null }
 type BudgetRow = { id:string; name:string; amount:number; period:'weekly'|'monthly'; starts_on:string; category_id:string|null; categories?:{name:string}|null }
@@ -52,6 +54,7 @@ const defaultCategories = [
 function Dashboard({ onSignOut, userEmail, userId }: { onSignOut:()=>void; userEmail:string; userId:string }) {
   const [active,setActive]=useState('Overview')
   const [wallets,setWallets]=useState<WalletRow[]>([])
+  const [bankRequests,setBankRequests]=useState<BankRequestRow[]>([])
   const [categories,setCategories]=useState<CategoryRow[]>([])
   const [budgets,setBudgets]=useState<BudgetRow[]>([])
   const [recurringItems,setRecurringItems]=useState<RecurringRow[]>([])
@@ -102,14 +105,15 @@ function Dashboard({ onSignOut, userEmail, userId }: { onSignOut:()=>void; userE
   const loadData=useCallback(async()=>{
     if(!supabase)return
     setLoadingData(true)
-    const [w,c,t,b,r]=await Promise.all([
+    const [w,c,t,b,r,br]=await Promise.all([
       supabase.from('wallet_accounts').select('id,provider,display_name,connection_status').order('created_at',{ascending:true}),
       supabase.from('categories').select('id,name,kind,user_id').or('user_id.is.null,user_id.eq.'+userId).order('name'),
       supabase.from('transactions').select('id,title,amount,direction,occurred_at,description,wallet_id,category_id,wallet_accounts(display_name),categories(name)').order('occurred_at',{ascending:false}).limit(500),
       supabase.from('budgets').select('id,name,amount,period,starts_on,category_id,categories(name)').order('starts_on',{ascending:false}),
-      supabase.from('recurring_items').select('id,title,amount,direction,frequency,next_due_on,end_on,reminder_days,wallet_id,category_id,notes,is_active,wallet_accounts(display_name),categories(name)').order('next_due_on',{ascending:true})
+      supabase.from('recurring_items').select('id,title,amount,direction,frequency,next_due_on,end_on,reminder_days,wallet_id,category_id,notes,is_active,wallet_accounts(display_name),categories(name)').order('next_due_on',{ascending:true}),
+      supabase.from('bank_connection_requests').select('id,institution_code,institution_name,access_status,created_at').order('created_at',{ascending:false})
     ])
-    const err=w.error||c.error||t.error||b.error||r.error
+    const err=w.error||c.error||t.error||b.error||r.error||br.error
     if(err)setNotice(err.message)
     if(!c.error&&(!c.data||c.data.length===0)){
       const seeded=await supabase.from('categories').insert(defaultCategories.map(cat=>({...cat,user_id:userId})))
@@ -121,6 +125,7 @@ function Dashboard({ onSignOut, userEmail, userId }: { onSignOut:()=>void; userE
     setTransactions((t.data||[]) as unknown as TxRow[])
     setBudgets((b.data||[]) as unknown as BudgetRow[])
     setRecurringItems((r.data||[]) as unknown as RecurringRow[])
+    setBankRequests((br.data||[]) as BankRequestRow[])
     setLoadingData(false)
   },[userId])
   useEffect(()=>{void loadData()},[loadData])
@@ -211,6 +216,20 @@ function Dashboard({ onSignOut, userEmail, userId }: { onSignOut:()=>void; userE
     setSaving(false)
     if(updateError){setNotice('Transaction recorded, but schedule update failed: '+updateError.message);await loadData();return}
     setNotice('Transaction recorded for '+item.title+'.');await loadData()
+  }
+  const addBankToTracker=async(bank:BankInstitution)=>{
+    if(!supabase)return
+    setSaving(true)
+    const {error}=await supabase.from('bank_connection_requests').upsert({user_id:userId,institution_code:bank.code,institution_name:bank.name,access_status:'provider_access_required'},{onConflict:'user_id,institution_code',ignoreDuplicates:true})
+    setSaving(false)
+    if(error){setNotice(error.message);return}
+    setNotice(bank.name+' added to your official API access tracker. No bank login details were requested or stored.')
+    await loadData()
+  }
+  const removeBankFromTracker=async(id:string)=>{
+    if(!supabase)return
+    const {error}=await supabase.from('bank_connection_requests').delete().eq('id',id).eq('user_id',userId)
+    if(error)setNotice(error.message);else{setNotice('Bank removed from your access tracker.');await loadData()}
   }
   const saveWallet=async(e:React.FormEvent)=>{
     e.preventDefault();if(!supabase||!walletName.trim())return
@@ -334,7 +353,7 @@ function Dashboard({ onSignOut, userEmail, userId }: { onSignOut:()=>void; userE
     const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n')
     const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));const a=document.createElement('a');a.href=url;a.download='my-finance-transactions.csv';a.click();URL.revokeObjectURL(url)
   }
-  const nav=[{label:'Overview',icon:Home},{label:'Transactions',icon:CreditCard},{label:'My wallets',icon:Wallet},{label:'Categories',icon:Tag},{label:'Budgets',icon:Target},{label:'Recurring',icon:Bell},{label:'Insights',icon:TrendingUp}]
+  const nav=[{label:'Overview',icon:Home},{label:'Transactions',icon:CreditCard},{label:'My wallets',icon:Wallet},{label:'Bank connections',icon:Building2},{label:'Categories',icon:Tag},{label:'Budgets',icon:Target},{label:'Recurring',icon:Bell},{label:'Insights',icon:TrendingUp}]
   const go=(label:string)=>{setActive(label);setMobileNav(false)}
     return <div className="app-shell">
     <aside className={mobileNav?'sidebar open':'sidebar'}>
@@ -358,6 +377,13 @@ function Dashboard({ onSignOut, userEmail, userId }: { onSignOut:()=>void; userE
           <div className="panel insight-panel"><div className="insight-title"><div className="spark-icon"><Zap size={17}/></div><div><h2>Getting started</h2><p>Your finance workspace</p></div></div><div className="spend-total">{transactions.length} <span>transactions saved</span></div><div className="insight-tip"><ShieldCheck size={15}/><span>Start by adding your wallets, then record income and expenses. You can import statements in a later update.</span></div></div></section></>}
         {active==='Transactions'&&<section className="panel transactions-panel"><div className="section-heading transaction-heading"><div><h2>All transactions</h2><p>Your saved income and expenses.</p></div><button className="text-btn" onClick={()=>setModal('transaction')}><Plus size={15}/> Add new</button></div><div className="transaction-tools"><div className="search-box"><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search transactions"/></div><select value={walletFilter} onChange={e=>setWalletFilter(e.target.value)}><option value="all">All wallets</option>{wallets.map(w=><option key={w.id} value={w.id}>{w.display_name}</option>)}</select><label className="filter-btn import-file-btn"><Upload size={15}/> Import CSV<input type="file" accept=".csv,text/csv" onChange={e=>{void handleCsvFile(e.target.files?.[0]);e.currentTarget.value=''}}/></label><button className="filter-btn" onClick={exportCsv}><Download size={15}/> Export CSV</button></div>{importError&&<div className="import-error">{importError}</div>}{importRows.length>0&&<div className="csv-preview"><div className="csv-preview-head"><div><b>{importFileName||'CSV preview'}</b><span>{importRows.length} valid rows · {importInvalid} invalid rows will be skipped</span></div><div><button className="text-btn" onClick={downloadCsvTemplate}>Download template</button><button className="row-action" onClick={()=>{setImportRows([]);setImportFileName('');setImportError('')}} title="Cancel import"><X size={16}/></button></div></div><div className="csv-preview-table"><div className="csv-preview-row csv-preview-header"><span>Date</span><span>Description</span><span>Type</span><span>Amount</span></div>{importRows.slice(0,5).map(r=><div className="csv-preview-row" key={r.line}><span>{new Date(r.occurred_at).toLocaleDateString('en-PK')}</span><span>{r.title}</span><span>{r.direction==='incoming'?'Income':'Expense'}</span><span>Rs. {money(r.amount)}</span></div>)}</div>{importRows.length>5&&<p className="form-hint">Showing first 5 of {importRows.length} rows.</p>}<div className="csv-preview-actions"><button className="secondary-btn" onClick={()=>{setImportRows([]);setImportFileName('')}}>Cancel</button><button className="primary-btn" disabled={saving} onClick={()=>void confirmCsvImport()}>{saving?'Importing…':'Import '+importRows.length+' transactions'}</button></div></div>}<TransactionList rows={filtered} onDelete={removeTransaction}/></section>}
         {active==='My wallets'&&<section className="panel transactions-panel"><div className="section-heading"><div><h2>Your wallets</h2><p>Add manual accounts and track their balances.</p></div><button className="primary-btn" onClick={()=>setModal('wallet')}><Plus size={16}/> Add wallet</button></div><div className="wallet-grid">{wallets.map(w=><div className="wallet-card nayapay" key={w.id}><div className="provider-name">{w.display_name}</div><div className="wallet-balance">Rs. {money(walletBalance(w.id))}</div><div className="wallet-card-bottom">{w.provider} · Manual tracking</div></div>)}{!wallets.length&&<div className="empty-state">No wallets added yet.</div>}</div></section>}
+        {active==='Bank connections'&&<section className="panel transactions-panel bank-connections-page">
+          <div className="section-heading"><div><h2>Official bank connections</h2><p>Track providers while official customer-consent APIs become available.</p></div><span className="bank-security-label"><LockKeyhole size={13}/> No passwords or PINs</span></div>
+          <div className="bank-framework-notice"><div className="bank-framework-icon"><ShieldCheck size={19}/></div><div><b>Pakistan Open Banking is moving toward a regulated model</b><p>SBP published draft Open Banking Regulations in October 2026. This is still a consultation draft—not a live universal connection service. My Finance will only activate providers after approved API access and security review.</p></div></div>
+          <div className="bank-connection-grid">{bankInstitutions.map(bank=>{const tracked=bankRequests.some(r=>r.institution_code===bank.code);return <article className="bank-provider-card" key={bank.code}><div className="bank-provider-top"><div className="bank-provider-icon"><Building2 size={19}/></div><span className={'bank-api-status '+bank.readiness}>{bank.readinessLabel}</span></div><h3>{bank.name}</h3><p>{bank.note}</p><div className="bank-provider-footer"><span>{bank.categoryLabel}</span><button disabled={saving||tracked} className={tracked?'tracked-btn':'track-bank-btn'} onClick={()=>void addBankToTracker(bank)}>{tracked?<><ShieldCheck size={13}/> Tracked</>:<>Track access <Link2 size={13}/></>}</button></div></article>})}</div>
+          <div className="bank-tracker-panel"><div className="section-heading"><div><h3>Your provider access tracker</h3><p>These are reminders for API onboarding—not connected bank accounts.</p></div><span>{bankRequests.length} tracked</span></div>{bankRequests.length?bankRequests.map(r=><div className="bank-request-row" key={r.id}><div><b>{r.institution_name}</b><span>Official API access not yet confirmed</span></div><span className="bank-api-status pending">Awaiting provider access</span><button className="row-action danger" title="Remove" onClick={()=>void removeBankFromTracker(r.id)}><X size={15}/></button></div>):<div className="empty-state">Choose banks above to track which official integrations should be prioritised.</div>}</div>
+          <p className="insights-footnote"><LockKeyhole size={14}/> No internet-banking credentials, OTPs, access tokens or account numbers are collected by this tracker. No live sync is active.</p>
+        </section>}
         {active==='Categories'&&<section className="panel transactions-panel"><div className="section-heading"><div><h2>Categories</h2><p>Organize income and expenses with your own categories.</p></div><button className="primary-btn" onClick={()=>{setEditingCategory(null);setCategoryName('');setCategoryKind('expense');setModal('category')}}><Plus size={16}/> Add category</button></div><div className="category-groups">{(['expense','income'] as const).map(kind=><div className="category-group" key={kind}><h3>{kind==='expense'?'Expense categories':'Income categories'}</h3>{categories.filter(cat=>cat.kind===kind).map(cat=><div className="category-row" key={cat.id}><span className={'category-dot '+kind}/><b>{cat.name}</b><span className="category-scope">{cat.user_id===userId?'Custom':'Default'}</span>{cat.user_id===userId&&<><button className="row-action" onClick={()=>{setEditingCategory(cat);setCategoryName(cat.name);setCategoryKind(cat.kind);setModal('category')}} title="Edit"><Pencil size={15}/></button><button className="row-action danger" onClick={()=>removeCategory(cat.id)} title="Delete"><Trash2 size={15}/></button></>}</div>)}{!categories.some(cat=>cat.kind===kind)&&<div className="empty-state">No categories yet.</div>}</div>)}</div></section>}
         {active==='Budgets'&&<section className="panel transactions-panel"><div className="section-heading"><div><h2>Your budgets</h2><p>Track category spending against weekly or monthly limits.</p></div><button className="primary-btn" onClick={()=>{setEditingBudget(null);setBudgetName('');setBudgetAmount('');setBudgetPeriod('monthly');setBudgetCategory('');setBudgetStart(new Date().toISOString().slice(0,10));setModal('budget')}}><Plus size={16}/> Create budget</button></div><div className="budget-grid">{budgets.map(b=>{const used=budgetSpent(b);const pct=Math.min(100,used/Number(b.amount)*100);const over=used>Number(b.amount);return <div className="budget-card" key={b.id}><div className="budget-card-head"><div><span className="budget-kicker">{b.period.toUpperCase()} BUDGET</span><h3>{b.name}</h3><p>{b.categories?.name||'All expenses'}</p></div><div className="budget-actions"><button className="row-action" onClick={()=>{setEditingBudget(b);setBudgetName(b.name);setBudgetAmount(String(b.amount));setBudgetPeriod(b.period);setBudgetCategory(b.category_id||'');setBudgetStart(b.starts_on);setModal('budget')}} title="Edit budget"><Pencil size={15}/></button><button className="row-action danger" onClick={()=>removeBudget(b.id)} title="Delete budget"><Trash2 size={15}/></button></div></div><div className="budget-amounts"><b>Rs. {money(used)}</b><span>of Rs. {money(Number(b.amount))}</span></div><div className="budget-progress"><i style={{width:pct+'%',background:over?'#d66b55':'#269d79'}}/></div><div className="budget-foot"><span>{Math.round(pct)}% used</span><span className={over?'budget-over':''}>{over?'Over by':'Remaining'} Rs. {money(Math.abs(Number(b.amount)-used))}</span></div></div>})}{!budgets.length&&<div className="empty-state">No budgets yet. Create a weekly or monthly budget to start tracking spending.</div>}</div></section>}
 
