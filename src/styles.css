@@ -20,3 +20,30 @@
 .form-hint{font-size:10px;line-height:1.5;color:#8c9a92;margin:2px 0}
 .loading-inline{padding:12px 0;color:#8a978f;font-size:11px}
 @media(max-width:700px){.welcome-actions{gap:6px}.welcome-actions .secondary-btn,.welcome-actions .primary-btn{width:38px;height:38px;padding:0;justify-content:center;font-size:0;flex-shrink:0}.finance-modal{padding:19px}.welcome-row{align-items:center}}
+
+/* Categories and budgets */
+.category-groups{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-top:18px}
+.category-group{border:1px solid #edf0f3;border-radius:12px;padding:16px;min-width:0}
+.category-group h3{font:700 12px Manrope,sans-serif;color:#344456;margin:0 0 12px}
+.category-row{display:flex;align-items:center;gap:9px;min-height:43px;border-top:1px solid #f0f2f4}
+.category-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.category-dot.expense{background:#e6a45c}.category-dot.income{background:#269d79}
+.category-row>b{font-size:11px;color:#455468;font-weight:600;flex:1}
+.category-scope{font-size:9px;color:#9aa4af}
+.row-action{width:29px;height:29px;border:0;border-radius:7px;background:transparent;color:#84928d;display:grid;place-items:center;cursor:pointer}
+.row-action:hover{background:#eff6f2;color:#177d5b}
+.row-action.danger:hover{background:#fff1ef;color:#c45e50}
+.budget-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:18px}
+.budget-card{border:1px solid #edf0f3;border-radius:12px;padding:17px;background:#fff;min-width:0}
+.budget-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.budget-kicker{font-size:8px;letter-spacing:1.2px;color:#269d79;font-weight:800}
+.budget-card h3{font:700 14px Manrope,sans-serif;color:#263648;margin:5px 0 3px;overflow-wrap:anywhere}
+.budget-card p{font-size:10px;color:#94a09a;margin:0}
+.budget-amounts{display:flex;align-items:baseline;gap:6px;margin:19px 0 9px}
+.budget-amounts b{font:800 19px Manrope,sans-serif;color:#263648}
+.budget-amounts span{font-size:10px;color:#98a39e}
+.budget-progress{height:7px;border-radius:10px;background:#edf1ef;overflow:hidden}
+.budget-progress i{display:block;height:100%;border-radius:10px;transition:width .2s ease}
+.budget-foot{display:flex;justify-content:space-between;gap:8px;margin-top:9px;font-size:9px;color:#8c9992}
+.budget-over{color:#c45e50;font-weight:700}
+@media(max-width:700px){.category-groups,.budget-grid{grid-template-columns:1fr}.category-group{padding:13px}.budget-card{padding:14px}}
