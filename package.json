@@ -19,7 +19,8 @@
     "recharts": "^2.15.0",
     "pdfjs-dist": "^4.10.38",
     "@capacitor/android": "^7.6.10",
-    "@capacitor/core": "^7.6.10"
+    "@capacitor/core": "^7.6.10",
+    "@capacitor/app": "^7.0.2"
   },
   "devDependencies": {
     "@types/react": "^18.3.18",
