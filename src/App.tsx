@@ -97,8 +97,16 @@ const defaultCategories = [
 ]
 function Dashboard({ onSignOut, userEmail, userId }: { onSignOut:()=>void; userEmail:string; userId:string }) {
   const [active,setActive]=useState('Overview')
+  // Keep a true navigation stack: Overview → Transactions → Insights
+  // Back should unwind the actual visited sequence, not jump to a fixed tab.
   const navigationHistory=useRef<string[]>([])
   const lastBackPress=useRef(0)
+  const activeRef=useRef('Overview')
+  const mobileNavRef=useRef(false)
+  const modalRef=useRef<'transaction'|'category'|'budget'|'recurring'|null>(null)
+  useEffect(()=>{activeRef.current=active},[active])
+  useEffect(()=>{mobileNavRef.current=mobileNav},[mobileNav])
+  useEffect(()=>{modalRef.current=modal},[modal])
   const [wallets,setWallets]=useState<WalletRow[]>([])
   const [bankRequests,setBankRequests]=useState<BankRequestRow[]>([])
   const [categories,setCategories]=useState<CategoryRow[]>([])
@@ -429,23 +437,59 @@ function Dashboard({ onSignOut, userEmail, userId }: { onSignOut:()=>void; userE
     const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));const a=document.createElement('a');a.href=url;a.download='my-finance-transactions.csv';a.click();URL.revokeObjectURL(url)
   }
   const nav=[{label:'Overview',icon:Home},{label:'Transactions',icon:CreditCard},{label:'Bank connections',icon:Building2},{label:'Categories',icon:Tag},{label:'Budgets',icon:Target},{label:'Recurring',icon:Bell},{label:'Insights',icon:TrendingUp}]
-  const go=(label:string)=>{setActive(current=>{if(current!==label)navigationHistory.current.push(current);return label});setMobileNav(false)}
+  const go=(label:string)=>{
+    const current=activeRef.current
+    if(current!==label){
+      navigationHistory.current.push(current)
+      activeRef.current=label
+      setActive(label)
+    }
+    setMobileNav(false)
+  }
+  const handleBack=useCallback(()=>{
+    if(mobileNavRef.current){mobileNavRef.current=false;setMobileNav(false);return true}
+    if(modalRef.current){modalRef.current=null;setModal(null);return true}
+    const previous=navigationHistory.current.pop()
+    if(previous){
+      activeRef.current=previous
+      setActive(previous)
+      lastBackPress.current=0
+      return true
+    }
+    // Overview is the root screen. Require a second native Back press to exit.
+    const now=Date.now()
+    if(now-lastBackPress.current<2000){lastBackPress.current=0;void CapacitorApp.exitApp();return true}
+    lastBackPress.current=now
+    setNotice('Press back again to exit My Finance.')
+    return true
+  },[])
   useEffect(()=>{
     if(!Capacitor.isNativePlatform())return
     let listener:{remove:()=>Promise<void>}|undefined
     let mounted=true
-    void CapacitorApp.addListener('backButton',()=>{
-      if(mobileNav){setMobileNav(false);return}
-      if(modal){setModal(null);return}
-      const previous=navigationHistory.current.pop()
-      if(previous){setActive(previous);return}
-      const now=Date.now()
-      if(now-lastBackPress.current<2000){lastBackPress.current=0;void CapacitorApp.exitApp();return}
-      lastBackPress.current=now
-      setNotice('Press back again to exit My Finance.')
-    }).then(value=>{if(mounted)listener=value;else void value.remove()})
+    void CapacitorApp.addListener('backButton',()=>{handleBack()})
+      .then(value=>{if(mounted)listener=value;else void value.remove()})
     return ()=>{mounted=false;void listener?.remove()}
-  },[mobileNav,modal])
+  },[handleBack])
+  useEffect(()=>{
+    const onKeyDown=(event:KeyboardEvent)=>{
+      if(event.key!=='Escape'||Capacitor.isNativePlatform())return
+      // Browser/device Back is handled by history; Escape is a keyboard fallback.
+      if(event.altKey||event.ctrlKey||event.metaKey)return
+      if(modalRef.current||mobileNavRef.current){event.preventDefault();handleBack()}
+    }
+    const onPopState=()=>{
+      handleBack()
+      window.history.pushState({myFinance:true},'','#app')
+    }
+    window.history.pushState({myFinance:true},'','#app')
+    window.addEventListener('keydown',onKeyDown)
+    window.addEventListener('popstate',onPopState)
+    return ()=>{
+      window.removeEventListener('keydown',onKeyDown)
+      window.removeEventListener('popstate',onPopState)
+    }
+  },[handleBack])
     return <div className="app-shell">
     <aside className={mobileNav?'sidebar open':'sidebar'}>
       <div className="brand"><div className="brand-mark"><Wallet size={21}/></div><div><b>my finance</b><span>PERSONAL MONEY</span></div><button className="mobile-close icon-btn" onClick={()=>setMobileNav(false)}><X size={18}/></button></div>
