@@ -18,7 +18,7 @@ export default function Auth({ recovery = false, onRecoveryComplete, configurati
   const submit = async (event: FormEvent) => {
     event.preventDefault()
     setError(''); setMessage('')
-    if (!supabase) return setError('Supabase is not configured. Add the Vercel environment variables and redeploy.')
+    if (!supabase) return setError('Sign-in is temporarily unavailable. Please try again later.')
     if ((mode === 'signup' || mode === 'reset') && password.length < 8) return setError('Password must be at least 8 characters.')
     if (mode === 'signup' && password !== confirm) return setError('Passwords do not match.')
     setBusy(true)
@@ -57,7 +57,7 @@ export default function Auth({ recovery = false, onRecoveryComplete, configurati
     <section className="auth-card">
       <div className="auth-brand"><div className="auth-brand-mark"><Wallet size={22}/></div><div><b>my finance</b><span>PERSONAL MONEY</span></div></div>
       <div className="auth-heading"><div className="auth-eyebrow">YOUR MONEY, IN ONE PLACE</div><h1>{title}<span>.</span></h1><p>{subtitle}</p></div>
-      {configurationMissing ? <div className="auth-alert error">Authentication is not configured. Check Vercel variables VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY, then redeploy.</div> : <form onSubmit={submit}>
+      {configurationMissing ? <div className="auth-alert error">Sign-in is temporarily unavailable. Please contact support if the problem continues.</div> : <form onSubmit={submit}>
         {mode === 'signup' && <label>Full name<input value={name} onChange={e=>setName(e.target.value)} placeholder="Your name" autoComplete="name" required/></label>}
         {mode !== 'reset' && <label>Email address<div className="auth-input-icon"><Mail size={17}/><input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" required/></div></label>}
         {mode !== 'forgot' && <label>{mode === 'reset' ? 'New password' : 'Password'}<div className="auth-input-icon"><LockKeyhole size={17}/><input type={visible?'text':'password'} value={password} onChange={e=>setPassword(e.target.value)} placeholder="At least 8 characters" autoComplete={mode==='login'?'current-password':'new-password'} minLength={8} required/><button type="button" className="password-toggle" onClick={()=>setVisible(!visible)} aria-label={visible?'Hide password':'Show password'}>{visible?<EyeOff size={17}/>:<Eye size={17}/>}</button></div></label>}
@@ -68,7 +68,7 @@ export default function Auth({ recovery = false, onRecoveryComplete, configurati
         <button className="auth-submit" disabled={busy}>{busy?'Please wait...':mode==='login'?'Sign in':mode==='signup'?'Create account':mode==='forgot'?'Send reset link':'Update password'} <ArrowRight size={17}/></button>
       </form>}
       {!configurationMissing && <div className="auth-switch">{mode==='login'?'New to My Finance?':mode==='signup'?'Already have an account?':mode==='forgot'?'Remember your password?':'Back to sign in'} <button onClick={()=>{setMode(mode==='login'?'signup':'login');setError('');setMessage('')}}>{mode==='login'?'Create an account':'Sign in'}</button></div>}
-      <div className="auth-security"><LockKeyhole size={14}/> Secure sign-in powered by Supabase</div>
+      <div className="auth-security"><LockKeyhole size={14}/> Secure sign-in</div>
     </section>
     <p className="auth-footer">© 2026 My Finance · Your financial data stays yours.</p>
   </main>
