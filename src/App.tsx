@@ -493,6 +493,15 @@ function Dashboard({ onSignOut, userEmail, userId }: { onSignOut:()=>void; userE
 :
       <form onSubmit={saveTransaction}><label>Transaction type</label><select value={txDirection} onChange={e=>{const v=e.target.value as typeof txDirection;setTxDirection(v);setTxCategory('')}}><option value="outgoing">Expense</option><option value="incoming">Income</option></select><label>Description</label><input required value={txTitle} onChange={e=>setTxTitle(e.target.value)} placeholder="e.g. Grocery shopping"/><label>Amount (PKR)</label><input required type="number" min="0.01" step="0.01" value={txAmount} onChange={e=>setTxAmount(e.target.value)} placeholder="0.00"/><label>Wallet</label><select value={txWallet} onChange={e=>setTxWallet(e.target.value)}><option value="">No wallet selected</option>{wallets.map(w=><option key={w.id} value={w.id}>{w.display_name}</option>)}</select><label>Category</label><select value={txCategory} onChange={e=>setTxCategory(e.target.value)}><option value="">Uncategorized</option>{categories.filter(c=>c.kind===(txDirection==='incoming'?'income':'expense')).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select><label>Date and time</label><input type="datetime-local" required value={txDate} onChange={e=>setTxDate(e.target.value)}/><label>Notes (optional)</label><input value={txDescription} onChange={e=>setTxDescription(e.target.value)} placeholder="Add a note"/><button className="primary-btn" disabled={saving}>{saving?'Saving…':'Save transaction'}</button></form>}
     </div></div>}
+    <nav className="mobile-bottom-nav" aria-label="Main navigation">
+      {[
+        {label:'Overview',icon:Home},
+        {label:'Transactions',icon:CreditCard},
+        {label:'Bank connections',icon:Building2},
+        {label:'Insights',icon:TrendingUp}
+      ].map(item=><button key={item.label} className={active===item.label?'mobile-bottom-item active':'mobile-bottom-item'} onClick={()=>go(item.label)} aria-current={active===item.label?'page':undefined}><item.icon size={19}/><span>{item.label==='Bank connections'?'Accounts':item.label}</span></button>)}
+      <button className="mobile-bottom-item" onClick={()=>setMobileNav(true)}><Menu size={19}/><span>More</span></button>
+    </nav>
   </div>
 }
 function TransactionList({rows,onDelete}:{rows:TxRow[];onDelete:(id:string)=>void}) {
